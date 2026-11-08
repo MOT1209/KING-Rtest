@@ -97,7 +97,7 @@ public sealed class SettingsManager
         }
     }
 
-    private static RecordingOptions GetDefaultOptions()
+    public static RecordingOptions GetDefaultOptions()
     {
         var defaultVideos = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyVideos), "KING Recorder");
         Directory.CreateDirectory(defaultVideos);

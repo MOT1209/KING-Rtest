@@ -37,24 +37,8 @@ public sealed partial class MainViewModel : ObservableObject
         _recordingEngine = recordingEngine;
         _settingsManager = settingsManager;
 
-        // Default initial options without blocking async calls in constructor
-        _currentOptions = new RecordingOptions(
-            Mode: CaptureMode.FullScreen,
-            TargetDisplay: null,
-            TargetWindow: null,
-            CustomRegion: null,
-            WebcamSettings: new WebcamOverlaySettings(true, WebcamShape.RoundedRectangle, CornerPlacement.BottomRight, null, 24, 2, "#D4AF37"),
-            CaptureMicrophone: true,
-            MicrophoneDeviceId: null,
-            MicrophoneVolume: 0.85f,
-            CaptureSystemAudio: true,
-            SystemAudioVolume: 0.90f,
-            Resolution: VideoResolutionPreset.P1080,
-            FrameRate: VideoFrameRate.Fps60,
-            Quality: VideoQuality.High,
-            Acceleration: HardwareAccelerationMode.Auto,
-            OutputDirectory: "C:\\Users\\User\\Videos\\KING Recorder\\"
-        );
+        // Default initial options using dynamic MyVideos folder path without blocking constructor
+        _currentOptions = SettingsManager.GetDefaultOptions();
 
         _recordingEngine.StateChanged += OnRecordingStateChanged;
     }

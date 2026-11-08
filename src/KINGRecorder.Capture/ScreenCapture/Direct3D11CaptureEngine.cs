@@ -48,25 +48,51 @@ public sealed class Direct3D11CaptureEngine : IScreenCaptureService
             bool success = EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, (IntPtr hMonitor, IntPtr hdcMonitor, ref RECT lprcMonitor, IntPtr dwData) =>
             {
                 var mi = new MONITORINFOEX();
-                mi.cbSize = (uint)Marshal.SizeOf(mi);
+                mi.cbSize = (uint)Marshal.SizeOf<MONITORINFOEX>();
+
                 if (GetMonitorInfo(hMonitor, ref mi))
                 {
                     int width = mi.rcMonitor.Right - mi.rcMonitor.Left;
                     int height = mi.rcMonitor.Bottom - mi.rcMonitor.Top;
-                    bool isPrimary = (mi.dwFlags & 0x00000001) != 0; // MONITORINFOF_PRIMARY
+                    bool isPrimary = (mi.dwFlags & MONITORINFOF_PRIMARY) != 0;
 
-                    string deviceName = new string(mi.szDevice).TrimEnd('\0');
-                    int refreshRate = 60;
+                    string deviceName = string.IsNullOrWhiteSpace(mi.szDevice)
+                        ? $"\\\\.\\DISPLAY{displays.Count + 1}"
+                        : mi.szDevice.Trim();
 
-                    // Query DEVMODE for refresh rate
+                    int refreshRate = 0; // Default to 0 (unknown/unavailable) unless verified
+
+                    // Query DEVMODE for actual display frequency
                     var devMode = new DEVMODE();
-                    devMode.dmSize = (short)Marshal.SizeOf(devMode);
-                    if (EnumDisplaySettings(deviceName, -1, ref devMode))
+                    devMode.dmSize = (ushort)Marshal.SizeOf<DEVMODE>();
+                    if (EnumDisplaySettings(deviceName, ENUM_CURRENT_SETTINGS, ref devMode))
                     {
-                        if (devMode.dmDisplayFrequency > 0)
+                        if ((devMode.dmFields & DM_DISPLAYFREQUENCY) != 0 && devMode.dmDisplayFrequency > 0)
                         {
-                            refreshRate = devMode.dmDisplayFrequency;
+                            refreshRate = (int)devMode.dmDisplayFrequency;
                         }
+                    }
+
+                    // Query real monitor DPI via shcore GetDpiForMonitor / user32 GetDpiForSystem
+                    double dpiScale = 1.0;
+                    try
+                    {
+                        if (GetDpiForMonitor(hMonitor, MDT_EFFECTIVE_DPI, out uint dpiX, out _) == 0 && dpiX > 0)
+                        {
+                            dpiScale = dpiX / 96.0;
+                        }
+                        else
+                        {
+                            uint systemDpi = GetDpiForSystem();
+                            if (systemDpi > 0)
+                            {
+                                dpiScale = systemDpi / 96.0;
+                            }
+                        }
+                    }
+                    catch
+                    {
+                        dpiScale = 1.0;
                     }
 
                     displays.Add(new DisplayInfo(
@@ -75,7 +101,7 @@ public sealed class Direct3D11CaptureEngine : IScreenCaptureService
                         Width: width,
                         Height: height,
                         RefreshRateHz: refreshRate,
-                        DpiScale: 1.0,
+                        DpiScale: dpiScale,
                         IsPrimary: isPrimary,
                         Bounds: new Rectangle(mi.rcMonitor.Left, mi.rcMonitor.Top, width, height)
                     ));
@@ -104,26 +130,33 @@ public sealed class Direct3D11CaptureEngine : IScreenCaptureService
         {
             EnumWindows((hWnd, lParam) =>
             {
-                if (IsWindowVisible(hWnd) && !IsIconic(hWnd) && GetWindowTextLength(hWnd) > 0)
+                if (IsWindowVisible(hWnd) && GetWindowTextLength(hWnd) > 0)
                 {
-                    // Filter cloaked UWP windows
-                    if (DwmGetWindowAttribute(hWnd, DWMWA_CLOAKED, out bool isCloaked, sizeof(bool)) == 0 && isCloaked)
+                    bool isMinimized = IsIconic(hWnd);
+
+                    // Filter cloaked UWP windows (using 4-byte BOOL marshalling)
+                    if (DwmGetWindowAttribute(hWnd, DWMWA_CLOAKED, out bool isCloaked, sizeof(int)) == 0 && isCloaked)
                     {
                         return true;
                     }
 
                     var sb = new StringBuilder(256);
                     GetWindowText(hWnd, sb, sb.Capacity);
-                    string title = sb.ToString();
+                    string title = sb.ToString().Trim();
+
+                    if (string.IsNullOrEmpty(title))
+                    {
+                        return true;
+                    }
 
                     GetWindowRect(hWnd, out RECT rect);
                     int width = rect.Right - rect.Left;
                     int height = rect.Bottom - rect.Top;
 
-                    if (width > 120 && height > 120)
+                    if (width > 50 && height > 50)
                     {
                         GetWindowThreadProcessId(hWnd, out uint processId);
-                        string processName = "unknown.exe";
+                        string processName = "Unknown Process";
                         try
                         {
                             var proc = Process.GetProcessById((int)processId);
@@ -139,7 +172,7 @@ public sealed class Direct3D11CaptureEngine : IScreenCaptureService
                             Title: title,
                             ProcessName: processName,
                             Bounds: new Rectangle(rect.Left, rect.Top, width, height),
-                            IsMinimized: false
+                            IsMinimized: isMinimized
                         ));
                     }
                 }
@@ -178,47 +211,57 @@ public sealed class Direct3D11CaptureEngine : IScreenCaptureService
         _framePool = null;
     }
 
-    // Win32 Interop P/Invoke
+    // Native Constants & Interop Declarations
     private delegate bool MonitorEnumProc(IntPtr hMonitor, IntPtr hdcMonitor, ref RECT lprcMonitor, IntPtr dwData);
     private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
 
+    private const uint MONITORINFOF_PRIMARY = 0x00000001;
     private const uint DWMWA_CLOAKED = 14;
+    private const uint DM_DISPLAYFREQUENCY = 0x00400000;
+    private const int ENUM_CURRENT_SETTINGS = -1;
+    private const int MDT_EFFECTIVE_DPI = 0;
 
-    [DllImport("user32.dll")]
+    [DllImport("user32.dll", SetLastError = true)]
     private static extern bool EnumDisplayMonitors(IntPtr hdc, IntPtr lprcClip, MonitorEnumProc lpfnEnum, IntPtr dwData);
 
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFOEX lpmi);
 
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern bool EnumDisplaySettings(string lpszDeviceName, int iModeNum, ref DEVMODE lpDevMode);
 
-    [DllImport("user32.dll")]
+    [DllImport("shcore.dll", SetLastError = true)]
+    private static extern int GetDpiForMonitor(IntPtr hMonitor, int dpiType, out uint dpiX, out uint dpiY);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern uint GetDpiForSystem();
+
+    [DllImport("user32.dll", SetLastError = true)]
     private static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
 
-    [DllImport("user32.dll")]
+    [DllImport("user32.dll", SetLastError = true)]
     private static extern bool IsWindowVisible(IntPtr hWnd);
 
-    [DllImport("user32.dll")]
+    [DllImport("user32.dll", SetLastError = true)]
     private static extern bool IsIconic(IntPtr hWnd);
 
-    [DllImport("user32.dll")]
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern int GetWindowTextLength(IntPtr hWnd);
 
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
 
-    [DllImport("user32.dll")]
+    [DllImport("user32.dll", SetLastError = true)]
     private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
 
-    [DllImport("user32.dll")]
+    [DllImport("user32.dll", SetLastError = true)]
     private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
 
-    [DllImport("dwmapi.dll")]
-    private static extern int DwmGetWindowAttribute(IntPtr hwnd, uint dwAttribute, out bool pvAttribute, int cbAttribute);
+    [DllImport("dwmapi.dll", SetLastError = true)]
+    private static extern int DwmGetWindowAttribute(IntPtr hwnd, uint dwAttribute, [MarshalAs(UnmanagedType.Bool)] out bool pvAttribute, int cbAttribute);
 
     [StructLayout(LayoutKind.Sequential)]
-    private struct RECT
+    public struct RECT
     {
         public int Left;
         public int Top;
@@ -227,42 +270,109 @@ public sealed class Direct3D11CaptureEngine : IScreenCaptureService
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-    private struct MONITORINFOEX
+    public struct MONITORINFOEX
     {
         public uint cbSize;
         public RECT rcMonitor;
         public RECT rcWork;
         public uint dwFlags;
         [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
-        public char[] szDevice;
+        public string szDevice;
     }
 
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-    private struct DEVMODE
+    [StructLayout(LayoutKind.Explicit, CharSet = CharSet.Unicode)]
+    public struct DEVMODE
     {
+        [FieldOffset(0)]
         [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
         public string dmDeviceName;
-        public short dmSpecVersion;
-        public short dmDriverVersion;
-        public short dmSize;
-        public short dmDriverExtra;
-        public int dmFields;
+
+        [FieldOffset(64)]
+        public ushort dmSpecVersion;
+
+        [FieldOffset(66)]
+        public ushort dmDriverVersion;
+
+        [FieldOffset(68)]
+        public ushort dmSize;
+
+        [FieldOffset(70)]
+        public ushort dmDriverExtra;
+
+        [FieldOffset(72)]
+        public uint dmFields;
+
+        [FieldOffset(76)]
         public int dmPositionX;
+
+        [FieldOffset(80)]
         public int dmPositionY;
-        public int dmDisplayOrientation;
-        public int dmDisplayFixedOutput;
+
+        [FieldOffset(84)]
+        public uint dmDisplayOrientation;
+
+        [FieldOffset(88)]
+        public uint dmDisplayFixedOutput;
+
+        [FieldOffset(92)]
         public short dmColor;
+
+        [FieldOffset(94)]
         public short dmDuplex;
+
+        [FieldOffset(96)]
         public short dmYResolution;
+
+        [FieldOffset(98)]
         public short dmTTOption;
+
+        [FieldOffset(100)]
         public short dmCollate;
+
+        [FieldOffset(102)]
         [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
         public string dmFormName;
-        public short dmLogPixels;
-        public int dmBitsPerPel;
-        public int dmPelsWidth;
-        public int dmPelsHeight;
-        public int dmDisplayFlags;
-        public int dmDisplayFrequency;
+
+        [FieldOffset(166)]
+        public ushort dmLogPixels;
+
+        [FieldOffset(168)]
+        public uint dmBitsPerPel;
+
+        [FieldOffset(172)]
+        public uint dmPelsWidth;
+
+        [FieldOffset(176)]
+        public uint dmPelsHeight;
+
+        [FieldOffset(180)]
+        public uint dmDisplayFlags;
+
+        [FieldOffset(184)]
+        public uint dmDisplayFrequency;
+
+        [FieldOffset(188)]
+        public uint dmICMMethod;
+
+        [FieldOffset(192)]
+        public uint dmICMIntent;
+
+        [FieldOffset(196)]
+        public uint dmMediaType;
+
+        [FieldOffset(200)]
+        public uint dmDTType;
+
+        [FieldOffset(204)]
+        public uint dmReserved1;
+
+        [FieldOffset(208)]
+        public uint dmReserved2;
+
+        [FieldOffset(212)]
+        public uint dmPanningWidth;
+
+        [FieldOffset(216)]
+        public uint dmPanningHeight;
     }
 }
