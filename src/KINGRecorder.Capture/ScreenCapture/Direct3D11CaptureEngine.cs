@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Drawing;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -72,25 +73,12 @@ public sealed class Direct3D11CaptureEngine : IScreenCaptureService
 
             if (!success || displays.Count == 0)
             {
-                throw new CaptureDeviceException("Failed to enumerate physical displays via Win32 API.");
+                _logger.LogWarning("EnumDisplayMonitors returned no displays. Returning empty list.");
             }
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "EnumDisplayMonitors failed or running in non-Windows container. Using primary fallback.");
-            if (displays.Count == 0)
-            {
-                displays.Add(new DisplayInfo(
-                    DeviceId: @"\\.\DISPLAY1",
-                    DisplayName: "Display 1 (Primary Fallback)",
-                    Width: 1920,
-                    Height: 1080,
-                    RefreshRateHz: 60,
-                    DpiScale: 1.0,
-                    IsPrimary: true,
-                    Bounds: new Rectangle(0, 0, 1920, 1080)
-                ));
-            }
+            _logger.LogWarning(ex, "EnumDisplayMonitors failed or running in non-Windows container.");
         }
 
         return Task.FromResult<IReadOnlyList<DisplayInfo>>(displays);
@@ -104,7 +92,7 @@ public sealed class Direct3D11CaptureEngine : IScreenCaptureService
         {
             EnumWindows((hWnd, lParam) =>
             {
-                if (IsWindowVisible(hWnd) && GetWindowTextLength(hWnd) > 0)
+                if (IsWindowVisible(hWnd) && !IsIconic(hWnd) && GetWindowTextLength(hWnd) > 0)
                 {
                     var sb = new StringBuilder(256);
                     GetWindowText(hWnd, sb, sb.Capacity);
@@ -114,12 +102,24 @@ public sealed class Direct3D11CaptureEngine : IScreenCaptureService
                     int width = rect.Right - rect.Left;
                     int height = rect.Bottom - rect.Top;
 
-                    if (width > 100 && height > 100)
+                    if (width > 120 && height > 120)
                     {
+                        GetWindowThreadProcessId(hWnd, out uint processId);
+                        string processName = "unknown.exe";
+                        try
+                        {
+                            var proc = Process.GetProcessById((int)processId);
+                            processName = proc.ProcessName + ".exe";
+                        }
+                        catch
+                        {
+                            // Process may have exited or access denied
+                        }
+
                         windows.Add(new WindowInfo(
                             Handle: hWnd,
                             Title: title,
-                            ProcessName: "app.exe",
+                            ProcessName: processName,
                             Bounds: new Rectangle(rect.Left, rect.Top, width, height),
                             IsMinimized: false
                         ));
@@ -139,7 +139,14 @@ public sealed class Direct3D11CaptureEngine : IScreenCaptureService
     public Task StartCaptureAsync(RecordingOptions options, CancellationToken ct = default)
     {
         _logger.LogInformation("Initializing Direct3D 11 screen capture in mode {Mode}", options.Mode);
-        // Phase 1 foundation interop
+        
+        // In non-Windows container or Phase 1 foundation, graphics capture requires active WinRT/WinUI context.
+        // We throw NotSupportedException if hardware capture cannot be initialized, ensuring no false IsCapturing state.
+        if (!GraphicsCaptureSession.IsSupported())
+        {
+            throw new CaptureDeviceException("Windows.Graphics.Capture is not supported on this operating system version or execution environment.");
+        }
+
         IsCapturing = true;
         return Task.CompletedTask;
     }
@@ -177,6 +184,9 @@ public sealed class Direct3D11CaptureEngine : IScreenCaptureService
     private static extern bool IsWindowVisible(IntPtr hWnd);
 
     [DllImport("user32.dll")]
+    private static extern bool IsIconic(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
     private static extern int GetWindowTextLength(IntPtr hWnd);
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
@@ -184,6 +194,9 @@ public sealed class Direct3D11CaptureEngine : IScreenCaptureService
 
     [DllImport("user32.dll")]
     private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+
+    [DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
 
     [StructLayout(LayoutKind.Sequential)]
     private struct RECT

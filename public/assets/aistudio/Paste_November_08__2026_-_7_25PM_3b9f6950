@@ -1,0 +1,1240 @@
+# MASTER EXECUTION PROMPT
+# KING RECORDER — PHASE 0.1.1
+## FINAL FOUNDATION REPAIR, WINDOWS VALIDATION & ARCHITECTURE STABILIZATION
+
+---
+
+# 1. PROJECT IDENTITY
+
+**Product Name:** KING RECORDER  
+**Repository:** https://github.com/MOT1209/KING-Rtest  
+**Default Branch:** main  
+**Project Version:** 1.0.0 MVP  
+**Current Phase:** Phase 0.1.1  
+**Previous Phase:** Phase 0.1 — Foundation Repair  
+**Latest Development:** Initial Phase 1 Win32 Enumeration Work
+
+### Relevant Existing Commits
+
+Inspect these commits before making any changes:
+
+Phase 0:
+`8aa9c47da9bc7f35d714fd4b187d28f05ca5b0f6`
+
+Phase 0.1:
+`4268b9147f276d97eb508e2169f7117b56ba6181`
+
+Recent Phase 1 enumeration attempt:
+`849ff60696a37b7d41daa79b23701ea3e2ecb25b`
+
+Do not assume that these commits represent a fully working implementation.
+
+Inspect the current repository state and all changes after these commits.
+
+---
+
+# 2. ENGINEERING ROLE
+
+Act as a senior engineering team consisting of:
+
+- Principal Windows Desktop Architect
+- Senior C# / .NET Engineer
+- WinUI 3 Application Engineer
+- Windows API / P/Invoke Engineer
+- Dependency Injection Architect
+- Windows Multimedia Systems Engineer
+- Software Testing Architect
+- Windows Build and Release Engineer
+- QA Automation Engineer
+
+You are responsible for correcting the existing implementation, not just reviewing it.
+
+You must work directly in the repository, make actual changes, execute available builds and tests, and produce verifiable engineering evidence.
+
+---
+
+# 3. PROJECT MISSION
+
+The purpose of Phase 0.1.1 is to close the remaining foundation defects discovered during the latest independent repository review.
+
+The most important findings are:
+
+1. The project still targets .NET 8.
+2. Windows App SDK 1.5 remains in use.
+3. There is no verified central package version management.
+4. The solution contains broken or incorrect project configuration mappings.
+5. The Infrastructure.Tests project has an invalid all-zero GUID.
+6. Release configurations contain incorrect Debug mappings.
+7. The documented GitHub Actions workflow was not found in the repository.
+8. The latest Win32 monitor enumeration still contains hardcoded fallback display information.
+9. Monitor refresh rate and DPI values are hardcoded.
+10. Window process names are hardcoded to `app.exe`.
+11. Window minimized and cloaked states are not detected correctly.
+12. Screen capture startup still falsely sets `IsCapturing = true`.
+13. WASAPI still does not start actual microphone or system audio capture.
+14. RecordingEngine still needs proper resource cleanup and error classification.
+15. MainViewModel still contains synchronous asynchronous-operation blocking.
+16. Existing tests do not adequately test production behavior.
+17. The WinUI status bar displays hardware features as active even though they are not implemented.
+18. No reliable Windows CI result has been established.
+
+Your mission is to fix these problems and establish a trustworthy, validated application foundation.
+
+**Do not start full multimedia engine development in this phase.**
+
+---
+
+# 4. STRICT PROJECT SCOPE
+
+Phase 0.1.1 covers:
+
+- Framework and dependency modernization.
+- Solution and project configuration repair.
+- Dependency Injection validation.
+- Application startup stabilization.
+- Recording lifecycle stabilization.
+- Settings persistence and tests.
+- Correct Win32 display/window enumeration foundations.
+- Accurate feature availability reporting.
+- Windows CI setup.
+- Build and test validation.
+- Documentation.
+
+Phase 0.1.1 does NOT implement:
+
+- Complete Windows.Graphics.Capture screen recording.
+- Complete Direct3D 11 frame pipeline.
+- Real webcam capture.
+- GPU webcam compositor.
+- Complete WASAPI audio recording.
+- Audio mixer.
+- Media Foundation video encoding.
+- AAC audio encoding.
+- Final recording dashboard.
+- Final recordings library.
+
+These will be implemented in their dedicated development phases.
+
+Never describe an unfinished feature as implemented.
+
+---
+
+# 5. FRAMEWORK MODERNIZATION
+
+## A. .NET
+
+Move the native solution from .NET 8 to:
+
+**.NET 10 LTS**
+
+Requirements:
+
+1. Inspect the available .NET 10 SDK.
+2. Use the latest supported servicing version.
+3. Ensure all production projects use compatible target frameworks.
+4. Ensure test projects use appropriate target frameworks.
+5. Verify C# language version compatibility.
+6. Remove outdated runtime references where unnecessary.
+7. Document the selected runtime.
+
+A possible Windows target is:
+
+`net10.0-windows10.0.19041.0`
+
+However, choose the actual target framework after verifying Windows App SDK and Windows API compatibility.
+
+Do not blindly copy a framework version from this prompt.
+
+## B. Windows App SDK / WinUI 3
+
+Replace the old Windows App SDK 1.5 dependency with a currently supported stable release compatible with .NET 10.
+
+Requirements:
+
+- Verify the latest stable release using official Microsoft documentation and NuGet metadata.
+- Confirm Windows 10/11 compatibility.
+- Confirm WinUI 3 build tooling compatibility.
+- Confirm unpackaged deployment compatibility.
+- Confirm supported Windows SDK requirements.
+- Avoid preview packages.
+- Avoid experimental dependencies.
+- Record the exact selected package version.
+
+Do not choose a package solely because it has the highest version number.
+
+## C. Visual Studio
+
+Verify the required Visual Studio version and workloads.
+
+Document:
+
+- Visual Studio version.
+- .NET 10 SDK.
+- Windows SDK version.
+- Windows App SDK tooling.
+- WinUI 3 project support.
+- Required build tools.
+
+## D. SharpDX and Graphics Dependencies
+
+Inspect the current SharpDX usage.
+
+Evaluate:
+
+- Vortice.Windows
+- Microsoft.Windows.CsWin32
+- Windows SDK / WinRT interoperability APIs
+
+Select a maintainable solution based on:
+
+- API coverage.
+- Compatibility.
+- Licensing.
+- Maintenance.
+- Stability.
+- Integration with Windows.Graphics.Capture.
+
+Do not introduce a large dependency migration unless technically justified.
+
+Document the decision in:
+
+`docs/DEPENDENCIES.md`
+
+---
+
+# 6. CENTRAL PACKAGE MANAGEMENT
+
+Introduce:
+
+`Directory.Packages.props`
+
+Use central package management for appropriate NuGet dependencies.
+
+Requirements:
+
+- Avoid duplicated package versions across projects.
+- Keep package versions consistent.
+- Remove unused package references.
+- Avoid unnecessary libraries.
+- Verify all packages restore successfully.
+- Document exceptions where central management is not appropriate.
+
+Also introduce:
+
+`global.json`
+
+Pin the .NET SDK selection to an appropriate installed .NET 10 SDK version.
+
+Use a sensible roll-forward policy.
+
+Do not pin to an SDK version that is unavailable on the development or CI machines.
+
+Document the selected SDK version.
+
+---
+
+# 7. REPAIR KINGRecorder.sln
+
+Inspect:
+
+`KINGRecorder.sln`
+
+The previous review found:
+
+- An all-zero project GUID for Infrastructure.Tests.
+- Incorrect Release ActiveCfg mappings.
+- Some Release configurations mapping to Debug.
+- Incomplete architecture configuration consistency.
+
+### Required Actions
+
+1. Generate a valid unique GUID for every project.
+2. Ensure there are no duplicate GUIDs.
+3. Ensure no all-zero project GUID exists.
+4. Ensure every referenced project file exists.
+5. Verify every project path.
+6. Verify all project references.
+7. Remove unsupported architecture mappings if they cannot be built.
+8. Use x64 as the primary MVP architecture.
+9. Ensure Release configuration maps to Release.
+10. Ensure Debug configuration maps to Debug.
+11. Ensure Build.0 mappings are valid.
+
+Do not claim ARM64 or x86 compatibility unless those configurations are actually verified.
+
+### Required Projects
+
+```text
+KINGRecorder.sln
+
+src/
+  KINGRecorder.App/
+  KINGRecorder.Core/
+  KINGRecorder.Capture/
+  KINGRecorder.Audio/
+  KINGRecorder.Recording/
+  KINGRecorder.Infrastructure/
+
+tests/
+  KINGRecorder.Core.Tests/
+  KINGRecorder.Capture.Tests/
+  KINGRecorder.Recording.Tests/
+  KINGRecorder.Infrastructure.Tests/
+```
+
+Preserve useful existing files.
+
+Do not recreate the solution unnecessarily.
+
+---
+
+# 8. REPAIR WIN32 DISPLAY ENUMERATION
+
+The most recent Phase 1 commit introduced Win32 P/Invoke enumeration.
+
+Keep the useful work, but correct the implementation.
+
+File:
+
+`src/KINGRecorder.Capture/ScreenCapture/Direct3D11CaptureEngine.cs`
+
+## A. Display Enumeration
+
+Inspect and improve:
+
+- EnumDisplayMonitors
+- GetMonitorInfo
+- MONITORINFOEX
+- MonitorEnumProc
+- Native display bounds.
+
+Required behavior:
+
+1. Detect all physical displays.
+2. Identify the primary display.
+3. Return actual device identifiers.
+4. Return actual display dimensions.
+5. Preserve negative virtual-screen coordinates.
+6. Retrieve actual refresh rate when the selected Windows APIs provide it.
+7. Retrieve actual monitor DPI rather than assuming 1.0.
+8. Handle disconnected or unavailable monitors.
+9. Handle P/Invoke failures correctly.
+10. Provide cancellation-aware asynchronous behavior.
+
+Do not hardcode:
+
+- Display 1 as the only display.
+- 1920×1080.
+- 60Hz.
+- DPI 1.0.
+- A fake primary monitor.
+
+When enumeration fails, return a genuine empty result or a clearly reported error according to the service contract.
+
+Never create a fake display as a fallback.
+
+### Native Interop Quality
+
+Review:
+
+- Struct layouts.
+- Character encoding.
+- Delegate lifetime.
+- Callback marshalling.
+- Native error handling.
+- P/Invoke signatures.
+- Cancellation behavior.
+
+Use `SetLastError = true` where appropriate and inspect native error codes.
+
+Ensure callback delegates remain alive for the full native call.
+
+Correct the MONITORINFOEX representation and initialization. Do not assume that a managed array is automatically a valid fixed native character buffer.
+
+---
+
+## B. Window Enumeration
+
+Improve:
+
+- EnumWindows
+- IsWindowVisible
+- GetWindowTextLength
+- GetWindowText
+- GetWindowRect
+- GetWindowThreadProcessId
+- IsIconic
+- DWM cloaked-window detection where appropriate.
+
+Required behavior:
+
+1. Return real top-level windows.
+2. Retrieve real window titles.
+3. Retrieve the actual process ID.
+4. Retrieve the actual process name when accessible.
+5. Detect minimized windows.
+6. Detect cloaked windows when supported.
+7. Skip invalid or inaccessible windows safely.
+8. Filter irrelevant system windows and tool windows where appropriate.
+9. Apply reasonable minimum size rules without discarding legitimate applications.
+10. Handle process-exit races.
+11. Handle access-denied conditions.
+12. Handle empty window titles.
+13. Preserve correct screen coordinates.
+
+Never use:
+
+`ProcessName: "app.exe"`
+
+Never claim every window is not minimized.
+
+Do not swallow exceptions without diagnostic logging.
+
+Document the filtering rules.
+
+---
+
+# 9. CORRECT THE SCREEN CAPTURE SERVICE STATE
+
+The most important rule:
+
+**Screen enumeration is not screen recording.**
+
+Do not confuse successful Win32 enumeration with a working Windows.Graphics.Capture implementation.
+
+Current problem:
+
+`StartCaptureAsync` changes `IsCapturing` to true without creating a genuine capture session.
+
+### Required Fix
+
+Until actual capture is implemented:
+
+- Keep `IsCapturing` false.
+- Return an explicit `NotSupportedException` or an appropriate domain exception for unavailable capture startup.
+- Do not create a fake GraphicsCaptureSession.
+- Do not report frame events when no frames were received.
+- Do not invent frame counters.
+- Do not return artificial capture success.
+
+Keep the existing service contracts ready for the real Phase 1 implementation.
+
+Add tests that verify the unavailable state is reported honestly.
+
+---
+
+# 10. REPAIR WASAPI SERVICE STATE
+
+File:
+
+`src/KINGRecorder.Audio/WasapiAudioCaptureService.cs`
+
+Current audio implementation does not initialize real recording clients.
+
+### Required Fix
+
+For this phase:
+
+1. Do not set `IsCapturing = true` without actual started clients.
+2. Do not return simulated microphone devices.
+3. Do not invent audio levels.
+4. Do not report system audio capture as active.
+5. Ensure StopAsync is safe if no clients exist.
+6. Correct resource disposal.
+7. Preserve clear logging.
+8. Use meaningful exceptions for unavailable functionality.
+9. Correctly distinguish device discovery from audio recording.
+10. Ensure failed initialization leaves the service in a clean state.
+
+Real WASAPI recording remains Phase 3.
+
+---
+
+# 11. REPAIR DEPENDENCY INJECTION
+
+Files:
+
+- `src/KINGRecorder.App/Program.cs`
+- `src/KINGRecorder.App/App.xaml.cs`
+- `src/KINGRecorder.App/MainWindow.xaml.cs`
+- `src/KINGRecorder.Recording/Stubs/RecordingStubs.cs`
+
+Ensure all required dependencies resolve.
+
+The current design includes:
+
+- IScreenCaptureService
+- IAudioCaptureService
+- IVideoCompositor
+- IEncoderService
+- IRecordingEngine
+- SettingsManager
+- MainViewModel
+
+### Required Architecture
+
+Create a clear composition root.
+
+Requirements:
+
+1. Every required interface has an explicit registration.
+2. Unavailable implementations remain clearly named.
+3. Correct service lifetimes are selected.
+4. No circular dependencies.
+5. No duplicate conflicting registrations.
+6. No manually constructed hardware services inside ViewModels.
+7. No uncontrolled global service locator.
+8. Application startup does not fail due to missing services.
+9. Required resources are disposed correctly.
+10. DI resolution can be verified by automated tests.
+
+Where possible, extract shared registration into a testable service registration method.
+
+Use `ValidateOnBuild` and `ValidateScopes` where compatible with the application architecture.
+
+For validation of WinUI-specific services, distinguish composition tests from actual application startup tests.
+
+---
+
+# 12. REPAIR RECORDINGENGINE
+
+File:
+
+`src/KINGRecorder.Recording/RecordingEngine.cs`
+
+Make the recording lifecycle reliable even though the real multimedia pipeline is still unavailable.
+
+## A. State Machine
+
+Use clearly defined states:
+
+- Idle
+- Initializing
+- Recording
+- Paused
+- Stopping
+- Finalizing
+- Completed
+- Error
+- Cancelled
+
+Define valid transitions.
+
+Prevent:
+
+- Starting twice.
+- Pausing while idle.
+- Resuming while not paused.
+- Stopping before a session has started.
+- Cancelling unrelated sessions.
+- Duplicate finalization.
+- Concurrent state corruption.
+
+## B. Startup Transaction
+
+Treat session initialization as a transaction.
+
+Recommended sequence:
+
+1. Validate recording options.
+2. Validate output directory.
+3. Verify encoder readiness.
+4. Initialize the compositor when required.
+5. Initialize capture services.
+6. Initialize audio services.
+7. Enter Recording only after all required services have successfully initialized.
+
+If any step fails:
+
+- Stop every service already initialized.
+- Dispose temporary resources where appropriate.
+- Remove only temporary files owned by the current session.
+- Preserve unrelated files.
+- Record the original failure.
+- Enter a documented recoverable state.
+
+Use rollback logic.
+
+## C. Error Classification
+
+Do not wrap every failure inside `VideoEncoderException`.
+
+Use appropriate domain exceptions for:
+
+- Capture initialization failure.
+- Audio device failure.
+- Encoder initialization failure.
+- Output storage failure.
+- Cancellation.
+- Resource cleanup failure.
+
+Preserve the original exception as the inner exception.
+
+## D. Cancellation
+
+Use CancellationToken correctly.
+
+Cancellation must not be reported as a normal encoder failure.
+
+Do not leave the engine permanently locked in Initializing, Stopping, or Error.
+
+Define whether Error is recoverable and how a new session can start.
+
+## E. Output Integrity
+
+Never:
+
+- Create fake MP4 files.
+- Invent file sizes.
+- Invent durations.
+- Return a successful RecordingItem without a verified output.
+- Rename WebM to MP4.
+- Treat a stub encoder as a successful encoder.
+
+An unavailable encoder must explicitly prevent recording startup.
+
+## F. Pause and Resume
+
+Make stopwatch behavior correct.
+
+Do not rely on a decorative timer.
+
+Document how elapsed duration and media timestamps will be coordinated when the actual encoder is implemented later.
+
+---
+
+# 13. REPAIR SETTINGS PERSISTENCE
+
+File:
+
+`src/KINGRecorder.Infrastructure/SettingsManager.cs`
+
+Maintain storage at:
+
+`%LOCALAPPDATA%\KINGRecorder\settings.json`
+
+### Required Improvements
+
+1. Reliable deserialization.
+2. Validation of all relevant options.
+3. Validation of volumes.
+4. Reject NaN and Infinity for floating-point values.
+5. Validate webcam overlay size and geometry.
+6. Validate output directory settings.
+7. Safe handling of missing files.
+8. Safe handling of invalid JSON.
+9. Atomic replacement.
+10. Unique temporary filenames for concurrent save safety.
+11. Correct cancellation behavior.
+12. Preserve the original file when replacement fails.
+13. Log failures.
+14. Propagate save failures to the caller.
+15. Avoid silently reporting failed persistence as successful.
+
+Important:
+
+Do not swallow OperationCanceledException.
+
+Do not delete the existing valid settings file before a new file is safely committed.
+
+Prefer an abstraction for filesystem access if it improves testability.
+
+---
+
+# 14. REPAIR MAINVIEWMODEL AND APPLICATION STARTUP
+
+File:
+
+`src/KINGRecorder.App/ViewModels/MainViewModel.cs`
+
+The previous review identified synchronous blocking:
+
+`GetAwaiter().GetResult()`
+
+Remove synchronous blocking from normal ViewModel workflows.
+
+### Required Behavior
+
+- Introduce asynchronous initialization.
+- Ensure initialization is awaited by application startup.
+- Load settings asynchronously.
+- Keep UI responsive.
+- Correctly synchronize observable properties.
+- Subscribe and unsubscribe from engine events safely.
+- Correctly dispatch UI-bound events to the UI thread.
+- Implement error reporting.
+- Prevent invalid commands.
+- Handle cancellation.
+- Avoid duplicate commands.
+- Ensure state changes reflect the real RecordingEngine state.
+
+Do not introduce a fake duration timer.
+
+### Startup
+
+Verify:
+
+- Program entry point.
+- WinRT initialization.
+- DI container creation.
+- App initialization.
+- MainWindow creation.
+- ViewModel injection.
+- Window activation.
+- Shutdown and disposal.
+
+Do not show an error-free interface while hiding a failed service initialization.
+
+---
+
+# 15. FIX MISLEADING UI STATUS
+
+File:
+
+`src/KINGRecorder.App/MainWindow.xaml`
+
+The previous implementation displayed status similar to:
+
+"Direct3D 11 Active • WASAPI 48kHz • H.264 Hardware Encoder"
+
+This is inaccurate because those pipelines are not implemented.
+
+Replace it with honest feature status.
+
+Examples:
+
+- Screen Capture: Not Implemented
+- Camera: Not Implemented
+- Microphone: Not Implemented
+- System Audio: Not Implemented
+- Video Encoder: Not Implemented
+
+Use localized status strings where appropriate.
+
+Do not use an "Active" label for a service that has not initialized real hardware.
+
+Keep the Premium KING visual identity.
+
+Do not build the complete dashboard in this phase.
+
+---
+
+# 16. REAL TESTING — NOT TEST THEORETICAL COPIES
+
+The existing tests must be reviewed and improved.
+
+Important:
+
+Do not write tests that merely repeat the same calculation inside the test itself.
+
+Tests must call real production methods.
+
+## A. Core Tests
+
+Test:
+
+- Actual state transition logic.
+- Invalid transitions.
+- Invalid startup.
+- Duplicate sessions.
+- Cancellation.
+- Error recovery.
+- Session initialization rollback.
+- Recording options validation.
+
+## B. Infrastructure Tests
+
+Test SettingsManager:
+
+- Load defaults.
+- Save settings.
+- Load saved settings.
+- Invalid JSON.
+- Invalid values.
+- NaN and Infinity.
+- Atomic replacement.
+- Existing-file preservation on failed save.
+- Concurrent saves.
+- Cancellation.
+- Output path validation.
+
+## C. Capture Tests
+
+Test:
+
+- Monitor information mapping.
+- Negative monitor coordinates.
+- DPI conversion.
+- Display bounds.
+- Window information mapping.
+- Invalid window filtering.
+- Capture unavailable state.
+- Failed capture startup leaves IsCapturing false.
+
+Use abstractions around native calls when needed.
+
+Do not require physical monitor hardware for ordinary unit tests.
+
+## D. Recording Tests
+
+Use test doubles only at explicit service boundaries.
+
+Test:
+
+- Dependency failures.
+- Encoder unavailable.
+- Capture unavailable.
+- Audio startup failure.
+- Cleanup after partial startup.
+- No false Recording state.
+- No successful output without a valid file.
+- Correct error classification.
+- Cancellation behavior.
+- Pause and resume behavior.
+
+## E. DI Tests
+
+Create a test that:
+
+1. Registers the production dependency set.
+2. Builds the service provider.
+3. Validates required services.
+4. Resolves MainViewModel or a safe equivalent.
+5. Resolves RecordingEngine.
+6. Confirms that required service dependencies exist.
+7. Confirms no accidental duplicate registrations.
+
+Do not start hardware capture from a DI test.
+
+## F. Testing Rules
+
+- Use xUnit.
+- Use deterministic temporary directories.
+- Use NullLogger or controlled logging.
+- Use explicit test doubles.
+- Do not use Random to pass tests.
+- Do not fabricate recordings.
+- Do not mark hardware tests as passed when not run.
+- Separate unit tests from Windows integration tests.
+
+---
+
+# 17. SOLUTION CONFIGURATION AND RELEASE BUILD
+
+Repair every project configuration.
+
+MVP build target:
+
+`x64`
+
+Ensure:
+
+- Debug x64 is valid.
+- Release x64 is valid.
+- Release maps to Release.
+- All projects are included correctly.
+- No broken references.
+- No invalid project GUIDs.
+- No zero GUIDs.
+- All required packages restore.
+
+If ARM64 support cannot be verified, document it as future work instead of claiming support.
+
+---
+
+# 18. IMPLEMENT REAL WINDOWS CI
+
+Create:
+
+`.github/workflows/windows-build.yml`
+
+This file must actually exist in the repository.
+
+### Workflow Requirements
+
+Trigger on:
+
+- Push to main.
+- Pull request to main.
+- Manual workflow dispatch.
+
+Runner:
+
+`windows-latest`
+
+Workflow steps:
+
+1. Checkout repository.
+2. Install selected .NET 10 SDK.
+3. Restore solution.
+4. Verify solution configuration.
+5. Build Debug x64.
+6. Run xUnit tests.
+7. Upload test results.
+8. Build Release x64.
+9. Publish build logs and diagnostic information when applicable.
+
+Use a compatible NuGet cache.
+
+Do not use fabricated success steps.
+
+Do not skip all tests merely to get a green CI badge.
+
+A failed build must fail the workflow.
+
+A skipped hardware test must be clearly labeled as skipped.
+
+### Validation Evidence
+
+After pushing the branch, inspect the actual workflow run.
+
+Record:
+
+- Workflow ID.
+- Commit SHA.
+- Job names.
+- Run status.
+- Test counts.
+- Failures.
+- Warnings.
+- Build logs.
+
+Do not claim CI passed merely because the workflow YAML exists.
+
+---
+
+# 19. DEPENDENCY AND CODE QUALITY AUDIT
+
+Inspect every project.
+
+Remove:
+
+- Unused dependencies.
+- Dead code.
+- Incorrect status reporting.
+- Stale .NET 8 configuration.
+- Outdated documentation.
+- Misleading hardware capability claims.
+- Broken paths.
+- Unnecessary duplicate settings.
+
+Use:
+
+- Nullable reference types.
+- Proper async/await.
+- CancellationToken.
+- Structured logging.
+- IDisposable / IAsyncDisposable where necessary.
+- Domain-specific exceptions.
+- Consistent naming.
+- Correct service lifetimes.
+
+Avoid:
+
+- `.Result`
+- `.Wait()`
+- `.GetAwaiter().GetResult()` in normal application flows.
+- Empty catch blocks.
+- Swallowed exceptions.
+- Fake hardware data.
+- Unnecessary abstractions.
+- Broad exception wrapping.
+- Global mutable state.
+
+Treat compiler warnings deliberately.
+
+Do not suppress warnings merely to obtain a successful build.
+
+---
+
+# 20. DOCUMENTATION DELIVERABLES
+
+Create or update the following.
+
+## docs/PHASE_0_1_1_REPORT.md
+
+Include:
+
+- Executive summary.
+- Previous defects.
+- Root causes.
+- Applied fixes.
+- Changed files.
+- Remaining issues.
+- Phase 0.1.1 readiness.
+
+## docs/BUILD_VALIDATION.md
+
+Include:
+
+- Visual Studio requirements.
+- .NET SDK.
+- Windows SDK.
+- Windows App SDK.
+- Restore instructions.
+- Build instructions.
+- Test instructions.
+- Actual results.
+- CI results.
+
+## docs/DEPENDENCIES.md
+
+Include:
+
+- Selected framework versions.
+- Package versions.
+- Licenses.
+- Compatibility.
+- Deprecated or legacy dependencies.
+- Alternatives evaluated.
+- Reasons for final decisions.
+
+## docs/ARCHITECTURE.md
+
+Update:
+
+- Project boundaries.
+- Dependency graph.
+- Dependency Injection.
+- Service lifecycle.
+- Error handling.
+- Resource disposal.
+- Startup flow.
+
+## docs/REPAIR_AUDIT.md
+
+Update every previous issue with one of:
+
+- FIXED
+- PARTIALLY FIXED
+- NOT FIXED
+- DEFERRED
+- BLOCKED
+
+Do not mark deferred features as implemented.
+
+---
+
+# 21. GIT WORKFLOW AND CHANGE SAFETY
+
+Do not make direct unreviewed changes to main.
+
+Create a dedicated branch:
+
+`phase-0.1.1/final-foundation-repair`
+
+Requirements:
+
+1. Start from the latest repository state.
+2. Preserve the Phase 0.1 changes.
+3. Preserve useful Win32 enumeration work.
+4. Do not delete the React prototype.
+5. Do not force-push.
+6. Avoid unrelated refactoring.
+7. Make logically grouped commits.
+8. Provide exact commit SHAs.
+9. Open a pull request targeting main when possible.
+10. Do not merge without explicit authorization.
+
+If a branch already exists, inspect it before creating another.
+
+Do not overwrite uncommitted work.
+
+---
+
+# 22. REQUIRED BUILD COMMANDS
+
+Run these in a Windows environment with the required SDKs.
+
+```powershell
+dotnet --info
+
+dotnet --list-sdks
+
+dotnet restore KINGRecorder.sln
+
+dotnet build KINGRecorder.sln -c Debug -p:Platform=x64
+
+dotnet test KINGRecorder.sln -c Debug -p:Platform=x64
+
+dotnet build KINGRecorder.sln -c Release -p:Platform=x64
+```
+
+Also verify:
+
+- Application startup.
+- DI service resolution.
+- Settings persistence.
+- No fake hardware state.
+- No fake recordings.
+- No fake screenshots.
+- No false recording completion.
+- Actual Win32 display enumeration on Windows.
+- Actual Win32 window enumeration on Windows.
+
+If execution takes place outside Windows:
+
+- Run all compatible static checks.
+- Run compatible unit tests.
+- Use Windows CI for Windows-specific builds.
+- Clearly report anything that could not be validated locally.
+
+---
+
+# 23. PHASE 0.1.1 DEFINITION OF DONE
+
+The phase can be considered complete only when the following table is satisfied.
+
+| Requirement | Acceptance Criteria |
+|---|---|
+| .NET modernization | Supported .NET 10 configuration |
+| Windows App SDK | Compatible stable release verified |
+| Package management | Central package version strategy |
+| SDK pinning | Valid global.json |
+| Solution structure | No invalid or zero GUIDs |
+| Platform mappings | Correct Debug and Release x64 |
+| Dependency Injection | All required services resolve |
+| App startup | No missing dependency failure |
+| MainViewModel | No normal synchronous async blocking |
+| Settings | Reliable atomic persistence |
+| Recording lifecycle | Defined, tested transitions |
+| Screen service | No fake active state |
+| Audio service | No fake active state |
+| Display discovery | Actual Win32 results, no fake fallback |
+| Window discovery | Actual titles, IDs and process names |
+| Status UI | Truthful feature availability |
+| Unit tests | Production methods tested |
+| CI workflow | Real Windows workflow exists |
+| CI validation | Actual run inspected |
+| Documentation | Updated with evidence |
+| React prototype | Preserved |
+| Release build | Successful verified Windows Release build |
+
+A file existing is not proof of functionality.
+
+A test passing is not proof of hardware integration.
+
+A successful CI YAML syntax check is not proof of a successful Windows build.
+
+---
+
+# 24. FINAL ENGINEERING REPORT
+
+At completion, provide this exact structure.
+
+## A. Executive Summary
+
+Explain what was actually repaired.
+
+## B. Repository Changes
+
+List:
+
+- Created files.
+- Modified files.
+- Deleted files, with reasons.
+- Preserved files.
+
+## C. Framework and Dependency Versions
+
+Provide exact selected versions and compatibility evidence.
+
+## D. Critical Defects
+
+For every original defect, report:
+
+- Problem.
+- Root cause.
+- Fix.
+- Test proving the fix.
+
+## E. Win32 Enumeration
+
+Report:
+
+- Monitor discovery implementation.
+- DPI handling.
+- Refresh rate handling.
+- Window discovery.
+- Process identification.
+- Cloaked/minimized filtering.
+- Windows machine validation.
+
+## F. Tests
+
+Provide actual counts:
+
+- Passed.
+- Failed.
+- Skipped.
+- Not executed.
+
+Include failing test names.
+
+## G. Build
+
+Provide exact:
+
+- Restore result.
+- Debug build result.
+- Test result.
+- Release build result.
+
+## H. CI
+
+Provide the actual GitHub Actions workflow run URL and status.
+
+If no real run is available, report:
+
+`NOT VERIFIED`
+
+## I. Remaining Work
+
+List all outstanding defects.
+
+## J. Phase 1 Readiness
+
+Choose exactly one:
+
+- READY
+- READY WITH DOCUMENTED LIMITATIONS
+- NOT READY
+
+Explain why.
+
+## K. Git Information
+
+Provide:
+
+- Branch name.
+- Commit SHAs.
+- Changed files summary.
+- Pull request URL, if created.
+
+---
+
+# 25. FINAL EXECUTION COMMAND
+
+Execute:
+
+**KING RECORDER — PHASE 0.1.1: FINAL FOUNDATION REPAIR & VALIDATION**
+
+Inspect the latest repository state first.
+
+Repair the existing implementation.
+
+Preserve useful work.
+
+Do not fake functionality.
+
+Do not hide failures.
+
+Do not claim that builds or tests passed without executing them.
+
+Do not begin the full Phase 1 Windows.Graphics.Capture engine.
+
+Close the foundation defects, validate the native solution, and document the evidence.
+
+The final objective is a stable, correctly configured, testable Windows application foundation.
+
+**KING RECORDER — Precision First. Reliability Before Features.**
