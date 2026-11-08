@@ -1,0 +1,16 @@
+<Project>
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows10.0.22621.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
+    <LangVersion>12.0</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <Company>KING Studio</Company>
+    <Product>KING RECORDER</Product>
+    <Version>1.0.0-mvp</Version>
+    <Authors>KING Studio Engineering</Authors>
+    <Copyright>Copyright © KING Studio 2026. All rights reserved.</Copyright>
+    <WindowsAppSDKVersion>1.5.240311000</WindowsAppSDKVersion>
+  </PropertyGroup>
+</Project>
