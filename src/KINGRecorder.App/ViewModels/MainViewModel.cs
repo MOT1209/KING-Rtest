@@ -29,13 +29,46 @@ public sealed partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private RecordingOptions _currentOptions;
 
+    [ObservableProperty]
+    private string? _errorMessage;
+
     public MainViewModel(IRecordingEngine recordingEngine, SettingsManager settingsManager)
     {
         _recordingEngine = recordingEngine;
         _settingsManager = settingsManager;
 
-        _currentOptions = _settingsManager.LoadSettingsAsync().GetAwaiter().GetResult();
+        // Default initial options without blocking async calls in constructor
+        _currentOptions = new RecordingOptions(
+            Mode: CaptureMode.FullScreen,
+            TargetDisplay: null,
+            TargetWindow: null,
+            CustomRegion: null,
+            WebcamSettings: new WebcamOverlaySettings(true, WebcamShape.RoundedRectangle, CornerPlacement.BottomRight, null, 24, 2, "#D4AF37"),
+            CaptureMicrophone: true,
+            MicrophoneDeviceId: null,
+            MicrophoneVolume: 0.85f,
+            CaptureSystemAudio: true,
+            SystemAudioVolume: 0.90f,
+            Resolution: VideoResolutionPreset.P1080,
+            FrameRate: VideoFrameRate.Fps60,
+            Quality: VideoQuality.High,
+            Acceleration: HardwareAccelerationMode.Auto,
+            OutputDirectory: "C:\\Users\\User\\Videos\\KING Recorder\\"
+        );
+
         _recordingEngine.StateChanged += OnRecordingStateChanged;
+    }
+
+    public async Task InitializeAsync()
+    {
+        try
+        {
+            CurrentOptions = await _settingsManager.LoadSettingsAsync();
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Failed to load settings: {ex.Message}";
+        }
     }
 
     private void OnRecordingStateChanged(object? sender, RecordingStateChangedEventArgs e)
@@ -43,41 +76,88 @@ public sealed partial class MainViewModel : ObservableObject
         CurrentState = e.NewState;
         IsRecording = e.NewState == RecordingState.Recording;
         IsPaused = e.NewState == RecordingState.Paused;
+        if (e.ErrorMessage != null)
+        {
+            ErrorMessage = e.ErrorMessage;
+        }
     }
 
     [RelayCommand]
     private async Task StartRecordingAsync()
     {
-        await _recordingEngine.StartRecordingAsync(CurrentOptions);
+        ErrorMessage = null;
+        try
+        {
+            await _recordingEngine.StartRecordingAsync(CurrentOptions);
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+        }
     }
 
     [RelayCommand]
     private async Task PauseRecordingAsync()
     {
-        await _recordingEngine.PauseRecordingAsync();
+        try
+        {
+            await _recordingEngine.PauseRecordingAsync();
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+        }
     }
 
     [RelayCommand]
     private async Task ResumeRecordingAsync()
     {
-        await _recordingEngine.ResumeRecordingAsync();
+        try
+        {
+            await _recordingEngine.ResumeRecordingAsync();
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+        }
     }
 
     [RelayCommand]
     private async Task StopRecordingAsync()
     {
-        await _recordingEngine.StopRecordingAsync();
+        try
+        {
+            await _recordingEngine.StopRecordingAsync();
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+        }
     }
 
     [RelayCommand]
     private async Task CancelRecordingAsync()
     {
-        await _recordingEngine.CancelRecordingAsync();
+        try
+        {
+            await _recordingEngine.CancelRecordingAsync();
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+        }
     }
 
     [RelayCommand]
     private async Task CaptureScreenshotAsync()
     {
-        await _recordingEngine.CaptureScreenshotAsync(CurrentOptions);
+        try
+        {
+            await _recordingEngine.CaptureScreenshotAsync(CurrentOptions);
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+        }
     }
 }

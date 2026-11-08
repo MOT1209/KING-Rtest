@@ -8,8 +8,8 @@ This document records the official package and framework selections for **KING R
 
 | Technology | Selected Version | Target Platform | License | Justification |
 |---|---|---|---|---|
-| **.NET SDK** | `.NET 8.0 LTS` | Windows 10 (19041+) / Windows 11 | MIT | Active Long Term Support release with C# 12 support, enhanced RyuJIT code generation, and low-allocation Span/Memory primitives for real-time frame buffering. |
-| **Windows App SDK** | `1.5.240311000` | Windows 10/11 x64, ARM64 | MIT | Modern native Windows UI and application lifecycle platform replacing legacy UWP and WPF. Delivers WinUI 3 with Mica/Acrylic materials. |
+| **.NET SDK** | `.NET 10.0 LTS` | Windows 10 (19041+) / Windows 11 | MIT | Active Long Term Support release with C# 13 default support, enhanced RyuJIT code generation, and low-allocation Span/Memory primitives for real-time frame buffering. |
+| **Windows App SDK** | `1.5.240802000` | Windows 10/11 x64 | MIT | Modern native Windows UI and application lifecycle platform replacing legacy UWP and WPF. Delivers WinUI 3 with Mica/Acrylic materials. |
 | **Windows SDK Tools** | `10.0.22621.3233` | Windows 11 22H2+ | Proprietary (MS) | Generates XAML markup compilers and WinRT projection stubs. |
 
 ---
@@ -17,13 +17,13 @@ This document records the official package and framework selections for **KING R
 ## 2. NuGet Package Inventory
 
 ### A. Presentation & Architecture
-- **`CommunityToolkit.Mvvm` (`8.2.2`)**:
+- **`CommunityToolkit.Mvvm` (`8.3.2`)**:
   - *License*: MIT
   - *Usage*: High-performance source generators (`[ObservableProperty]`, `[RelayCommand]`) without runtime reflection overhead.
-- **`Microsoft.Extensions.DependencyInjection` (`8.0.0`)**:
+- **`Microsoft.Extensions.DependencyInjection` (`9.0.0`)**:
   - *License*: MIT
   - *Usage*: Composition root in `Program.cs`, enforcing loose coupling and testability.
-- **`Microsoft.Extensions.Logging` & `Console` (`8.0.0`)**:
+- **`Microsoft.Extensions.Logging` & `Console` (`9.0.0`)**:
   - *License*: MIT
   - *Usage*: Structured diagnostic logging for Direct3D and WASAPI lifecycle events.
 

@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using NAudio.CoreAudioApi;
 using NAudio.Wave;
+using KINGRecorder.Core.Exceptions;
 using KINGRecorder.Core.Interfaces;
 using KINGRecorder.Core.Models;
 
@@ -40,8 +41,7 @@ public sealed class WasapiAudioCaptureService : IAudioCaptureService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Could not enumerate native WASAPI audio devices in non-Windows environment");
-            devices.Add(new AudioDeviceInfo("default-mic", "Default System Microphone", true, true));
+            _logger.LogWarning(ex, "Could not enumerate native WASAPI audio devices in non-Windows environment or audio service unavailable.");
         }
 
         return Task.FromResult<IReadOnlyList<AudioDeviceInfo>>(devices);
@@ -49,11 +49,12 @@ public sealed class WasapiAudioCaptureService : IAudioCaptureService
 
     public Task StartAsync(bool captureMic, string? micId, float micVol, bool captureSystem, float sysVol, CancellationToken ct = default)
     {
-        _micGain = micVol;
-        _sysGain = sysVol;
-        IsCapturing = true;
-        _logger.LogInformation("WASAPI Audio capture started. Mic={Mic}, Sys={Sys}", captureMic, captureSystem);
-        return Task.CompletedTask;
+        _micGain = Math.Clamp(micVol, 0f, 1f);
+        _sysGain = Math.Clamp(sysVol, 0f, 1f);
+        IsCapturing = false;
+
+        _logger.LogInformation("WASAPI Audio capture request received (Mic={Mic}, Sys={Sys}). Pipeline initialization scheduled for Phase 3.", captureMic, captureSystem);
+        throw new NotSupportedException("WASAPI audio capture client initialization is scheduled for Phase 3 implementation.");
     }
 
     public void UpdateVolumes(float micVol, float sysVol)
@@ -65,8 +66,15 @@ public sealed class WasapiAudioCaptureService : IAudioCaptureService
     public Task StopAsync(CancellationToken ct = default)
     {
         IsCapturing = false;
-        _systemLoopback?.StopRecording();
-        _micCapture?.StopRecording();
+        try
+        {
+            _systemLoopback?.StopRecording();
+            _micCapture?.StopRecording();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error while stopping uninitialized WASAPI capture clients.");
+        }
         return Task.CompletedTask;
     }
 
@@ -75,5 +83,7 @@ public sealed class WasapiAudioCaptureService : IAudioCaptureService
         StopAsync().GetAwaiter().GetResult();
         _systemLoopback?.Dispose();
         _micCapture?.Dispose();
+        _systemLoopback = null;
+        _micCapture = null;
     }
 }

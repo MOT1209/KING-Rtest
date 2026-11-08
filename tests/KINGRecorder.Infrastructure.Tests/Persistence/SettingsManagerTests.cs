@@ -65,4 +65,16 @@ public class SettingsManagerTests : IDisposable
 
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => manager.SaveSettingsAsync(invalid));
     }
+
+    [Fact]
+    public async Task SaveSettings_WithNanOrInfinityVolume_ThrowsArgumentOutOfRange()
+    {
+        var manager = new SettingsManager(NullLogger<SettingsManager>.Instance, _tempFilePath);
+        var options = await manager.LoadSettingsAsync();
+        var invalidNan = options with { SystemAudioVolume = float.NaN };
+        var invalidInf = options with { MicrophoneVolume = float.PositiveInfinity };
+
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => manager.SaveSettingsAsync(invalidNan));
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => manager.SaveSettingsAsync(invalidInf));
+    }
 }

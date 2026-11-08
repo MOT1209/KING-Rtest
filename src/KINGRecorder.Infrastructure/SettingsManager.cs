@@ -131,10 +131,10 @@ public sealed class SettingsManager
 
     private static void ValidateOptions(RecordingOptions options)
     {
-        if (options.MicrophoneVolume is < 0f or > 1f)
-            throw new ArgumentOutOfRangeException(nameof(options), "Microphone volume must be between 0.0 and 1.0.");
-        if (options.SystemAudioVolume is < 0f or > 1f)
-            throw new ArgumentOutOfRangeException(nameof(options), "System audio volume must be between 0.0 and 1.0.");
+        if (float.IsNaN(options.MicrophoneVolume) || float.IsInfinity(options.MicrophoneVolume) || options.MicrophoneVolume is < 0f or > 1f)
+            throw new ArgumentOutOfRangeException(nameof(options), "Microphone volume must be a finite number between 0.0 and 1.0.");
+        if (float.IsNaN(options.SystemAudioVolume) || float.IsInfinity(options.SystemAudioVolume) || options.SystemAudioVolume is < 0f or > 1f)
+            throw new ArgumentOutOfRangeException(nameof(options), "System audio volume must be a finite number between 0.0 and 1.0.");
         if (string.IsNullOrWhiteSpace(options.OutputDirectory))
             throw new ArgumentException("Output directory cannot be empty.", nameof(options));
     }

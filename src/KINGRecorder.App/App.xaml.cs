@@ -18,5 +18,6 @@ public partial class App : Application
         var vm = Program.Services.GetRequiredService<MainViewModel>();
         _mainWindow = new MainWindow(vm);
         _mainWindow.Activate();
+        _ = vm.InitializeAsync();
     }
 }

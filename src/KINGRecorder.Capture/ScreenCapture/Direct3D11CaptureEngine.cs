@@ -56,13 +56,25 @@ public sealed class Direct3D11CaptureEngine : IScreenCaptureService
                     bool isPrimary = (mi.dwFlags & 0x00000001) != 0; // MONITORINFOF_PRIMARY
 
                     string deviceName = new string(mi.szDevice).TrimEnd('\0');
+                    int refreshRate = 60;
+
+                    // Query DEVMODE for refresh rate
+                    var devMode = new DEVMODE();
+                    devMode.dmSize = (short)Marshal.SizeOf(devMode);
+                    if (EnumDisplaySettings(deviceName, -1, ref devMode))
+                    {
+                        if (devMode.dmDisplayFrequency > 0)
+                        {
+                            refreshRate = devMode.dmDisplayFrequency;
+                        }
+                    }
 
                     displays.Add(new DisplayInfo(
                         DeviceId: deviceName,
                         DisplayName: $"Display {displays.Count + 1}{(isPrimary ? " (Primary)" : "")}",
                         Width: width,
                         Height: height,
-                        RefreshRateHz: 60,
+                        RefreshRateHz: refreshRate,
                         DpiScale: 1.0,
                         IsPrimary: isPrimary,
                         Bounds: new Rectangle(mi.rcMonitor.Left, mi.rcMonitor.Top, width, height)
@@ -73,12 +85,12 @@ public sealed class Direct3D11CaptureEngine : IScreenCaptureService
 
             if (!success || displays.Count == 0)
             {
-                _logger.LogWarning("EnumDisplayMonitors returned no displays. Returning empty list.");
+                _logger.LogWarning("EnumDisplayMonitors returned no displays. Returning empty list without fake fallbacks.");
             }
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "EnumDisplayMonitors failed or running in non-Windows container.");
+            _logger.LogWarning(ex, "EnumDisplayMonitors failed or running in non-Windows environment.");
         }
 
         return Task.FromResult<IReadOnlyList<DisplayInfo>>(displays);
@@ -94,6 +106,12 @@ public sealed class Direct3D11CaptureEngine : IScreenCaptureService
             {
                 if (IsWindowVisible(hWnd) && !IsIconic(hWnd) && GetWindowTextLength(hWnd) > 0)
                 {
+                    // Filter cloaked UWP windows
+                    if (DwmGetWindowAttribute(hWnd, DWMWA_CLOAKED, out bool isCloaked, sizeof(bool)) == 0 && isCloaked)
+                    {
+                        return true;
+                    }
+
                     var sb = new StringBuilder(256);
                     GetWindowText(hWnd, sb, sb.Capacity);
                     string title = sb.ToString();
@@ -130,7 +148,7 @@ public sealed class Direct3D11CaptureEngine : IScreenCaptureService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "EnumWindows failed or running in non-Windows container.");
+            _logger.LogWarning(ex, "EnumWindows failed or running in non-Windows environment.");
         }
 
         return Task.FromResult<IReadOnlyList<WindowInfo>>(windows);
@@ -139,16 +157,9 @@ public sealed class Direct3D11CaptureEngine : IScreenCaptureService
     public Task StartCaptureAsync(RecordingOptions options, CancellationToken ct = default)
     {
         _logger.LogInformation("Initializing Direct3D 11 screen capture in mode {Mode}", options.Mode);
-        
-        // In non-Windows container or Phase 1 foundation, graphics capture requires active WinRT/WinUI context.
-        // We throw NotSupportedException if hardware capture cannot be initialized, ensuring no false IsCapturing state.
-        if (!GraphicsCaptureSession.IsSupported())
-        {
-            throw new CaptureDeviceException("Windows.Graphics.Capture is not supported on this operating system version or execution environment.");
-        }
+        IsCapturing = false;
 
-        IsCapturing = true;
-        return Task.CompletedTask;
+        throw new NotSupportedException("Windows.Graphics.Capture frame pool initialization is scheduled for Phase 1 implementation.");
     }
 
     public Task StopCaptureAsync(CancellationToken ct = default)
@@ -171,11 +182,16 @@ public sealed class Direct3D11CaptureEngine : IScreenCaptureService
     private delegate bool MonitorEnumProc(IntPtr hMonitor, IntPtr hdcMonitor, ref RECT lprcMonitor, IntPtr dwData);
     private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
 
+    private const uint DWMWA_CLOAKED = 14;
+
     [DllImport("user32.dll")]
     private static extern bool EnumDisplayMonitors(IntPtr hdc, IntPtr lprcClip, MonitorEnumProc lpfnEnum, IntPtr dwData);
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFOEX lpmi);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern bool EnumDisplaySettings(string lpszDeviceName, int iModeNum, ref DEVMODE lpDevMode);
 
     [DllImport("user32.dll")]
     private static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
@@ -198,6 +214,9 @@ public sealed class Direct3D11CaptureEngine : IScreenCaptureService
     [DllImport("user32.dll")]
     private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
 
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmGetWindowAttribute(IntPtr hwnd, uint dwAttribute, out bool pvAttribute, int cbAttribute);
+
     [StructLayout(LayoutKind.Sequential)]
     private struct RECT
     {
@@ -216,5 +235,34 @@ public sealed class Direct3D11CaptureEngine : IScreenCaptureService
         public uint dwFlags;
         [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
         public char[] szDevice;
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct DEVMODE
+    {
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
+        public string dmDeviceName;
+        public short dmSpecVersion;
+        public short dmDriverVersion;
+        public short dmSize;
+        public short dmDriverExtra;
+        public int dmFields;
+        public int dmPositionX;
+        public int dmPositionY;
+        public int dmDisplayOrientation;
+        public int dmDisplayFixedOutput;
+        public short dmColor;
+        public short dmDuplex;
+        public short dmYResolution;
+        public short dmTTOption;
+        public short dmCollate;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
+        public string dmFormName;
+        public short dmLogPixels;
+        public int dmBitsPerPel;
+        public int dmPelsWidth;
+        public int dmPelsHeight;
+        public int dmDisplayFlags;
+        public int dmDisplayFrequency;
     }
 }
