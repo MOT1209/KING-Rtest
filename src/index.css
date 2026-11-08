@@ -1,0 +1,69 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --king-black: #0c0d10;
+    --king-card: #15171e;
+    --king-card-border: rgba(255, 255, 255, 0.08);
+    --king-gold: #d4af37;
+    --king-gold-glow: rgba(212, 175, 55, 0.25);
+    --king-red: #ef4444;
+  }
+
+  body {
+    background-color: #0a0b0e;
+    color: #e2e8f0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    user-select: none;
+    overflow-x: hidden;
+  }
+
+  /* Custom sleek scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: #0f1115;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #272a34;
+    border-radius: 3px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #d4af37;
+  }
+}
+
+/* Animations */
+@keyframes pulse-red {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
+  }
+  50% {
+    opacity: 0.85;
+    transform: scale(1.04);
+    box-shadow: 0 0 0 10px rgba(239, 68, 68, 0);
+  }
+}
+
+.animate-rec-pulse {
+  animation: pulse-red 2s infinite ease-in-out;
+}
+
+@keyframes gold-shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.gold-gradient-text {
+  background: linear-gradient(135deg, #fce084 0%, #d4af37 50%, #aa8210 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
