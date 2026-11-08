@@ -9,6 +9,7 @@ using KINGRecorder.Capture.ScreenCapture;
 using KINGRecorder.Core.Interfaces;
 using KINGRecorder.Infrastructure;
 using KINGRecorder.Recording;
+using KINGRecorder.Recording.Stubs;
 using KINGRecorder.App.ViewModels;
 
 namespace KINGRecorder.App;
@@ -48,6 +49,8 @@ public static class Program
         // Hardware Services
         services.AddSingleton<IScreenCaptureService, Direct3D11CaptureEngine>();
         services.AddSingleton<IAudioCaptureService, WasapiAudioCaptureService>();
+        services.AddSingleton<IVideoCompositor, UnavailableVideoCompositor>();
+        services.AddSingleton<IEncoderService, UnavailableEncoderService>();
 
         // Recording Engine
         services.AddSingleton<IRecordingEngine, RecordingEngine>();

@@ -20,7 +20,6 @@ public sealed class RecordingEngine : IRecordingEngine
     private readonly IEncoderService _encoder;
 
     private readonly Stopwatch _stopwatch = new();
-    private TimeSpan _pausedOffset = TimeSpan.Zero;
     private RecordingOptions? _currentOptions;
     private string? _currentOutputPath;
 
@@ -65,6 +64,9 @@ public sealed class RecordingEngine : IRecordingEngine
             var filename = $"KING_REC_{DateTime.Now:yyyyMMdd_HHmmss}.mp4";
             _currentOutputPath = Path.Combine(options.OutputDirectory, filename);
 
+            // Verify encoder readiness (will throw NotSupportedException if unavailable in Phase 0.1)
+            await _encoder.InitializeAsync(_currentOutputPath, 1920, 1080, (int)options.FrameRate, 10000000, ct);
+
             await _screenCapture.StartCaptureAsync(options, ct);
             await _audioCapture.StartAsync(
                 options.CaptureMicrophone,
@@ -81,7 +83,7 @@ public sealed class RecordingEngine : IRecordingEngine
         {
             _logger.LogError(ex, "Failed to start recording session.");
             SetState(RecordingState.Error, ex.Message);
-            throw;
+            throw new VideoEncoderException("Recording engine initialization failed because the encoder pipeline is not yet implemented in Phase 0.1.", ex);
         }
     }
 
@@ -119,17 +121,19 @@ public sealed class RecordingEngine : IRecordingEngine
         await _audioCapture.StopAsync(ct);
         await _encoder.FinalizeAsync(ct);
 
-        var duration = _stopwatch.Elapsed;
-        var fileInfo = new FileInfo(_currentOutputPath ?? "recording.mp4");
-        long fileSize = fileInfo.Exists ? fileInfo.Length : 1024 * 1024;
+        if (_currentOutputPath == null || !File.Exists(_currentOutputPath))
+        {
+            throw new VideoEncoderException("Recording output file was not generated because encoding is not implemented in Phase 0.1.");
+        }
 
+        var fileInfo = new FileInfo(_currentOutputPath);
         var result = new RecordingItem(
             Id: Guid.NewGuid(),
             Title: Path.GetFileNameWithoutExtension(fileInfo.Name),
             Filename: fileInfo.Name,
             FilePath: fileInfo.FullName,
-            Duration: duration,
-            FileSizeBytes: fileSize,
+            Duration: _stopwatch.Elapsed,
+            FileSizeBytes: fileInfo.Length,
             CreatedAtUtc: DateTime.UtcNow,
             Resolution: _currentOptions?.Resolution.ToString() ?? "1080p",
             Fps: (int)(_currentOptions?.FrameRate ?? VideoFrameRate.Fps60),
@@ -150,7 +154,7 @@ public sealed class RecordingEngine : IRecordingEngine
 
         if (_currentOutputPath != null && File.Exists(_currentOutputPath))
         {
-            try { File.Delete(_currentOutputPath); } catch { /* best effort cleanup */ }
+            try { File.Delete(_currentOutputPath); } catch { }
         }
 
         SetState(RecordingState.Idle);
@@ -158,10 +162,7 @@ public sealed class RecordingEngine : IRecordingEngine
 
     public Task<string> CaptureScreenshotAsync(RecordingOptions options, CancellationToken ct = default)
     {
-        var filename = $"KING_SHOT_{DateTime.Now:yyyyMMdd_HHmmss}.png";
-        var path = Path.Combine(options.OutputDirectory, filename);
-        _logger.LogInformation("Screenshot captured at {Path}", path);
-        return Task.FromResult(path);
+        throw new NotSupportedException("Screenshot capture is scheduled for Phase 5 implementation and will not generate fake outputs.");
     }
 
     public void Dispose()

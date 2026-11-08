@@ -23,6 +23,17 @@ public sealed class SettingsManager
         _settingsFilePath = Path.Combine(dir, "settings.json");
     }
 
+    public SettingsManager(ILogger<SettingsManager> logger, string customSettingsFilePath)
+    {
+        _logger = logger;
+        _settingsFilePath = customSettingsFilePath;
+        var dir = Path.GetDirectoryName(customSettingsFilePath);
+        if (!string.IsNullOrEmpty(dir))
+        {
+            Directory.CreateDirectory(dir);
+        }
+    }
+
     public async Task<RecordingOptions> LoadSettingsAsync(CancellationToken ct = default)
     {
         try
@@ -31,14 +42,63 @@ public sealed class SettingsManager
             {
                 var json = await File.ReadAllTextAsync(_settingsFilePath, ct);
                 var options = JsonSerializer.Deserialize<RecordingOptions>(json);
-                if (options != null) return options;
+                if (options != null)
+                {
+                    ValidateOptions(options);
+                    return options;
+                }
             }
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to load settings file, fallback to defaults.");
+            _logger.LogWarning(ex, "Failed to load settings file from {Path}, fallback to defaults.", _settingsFilePath);
         }
 
+        return GetDefaultOptions();
+    }
+
+    public async Task SaveSettingsAsync(RecordingOptions options, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        ValidateOptions(options);
+
+        var tempPath = _settingsFilePath + ".tmp";
+        try
+        {
+            var json = JsonSerializer.Serialize(options, new JsonSerializerOptions { WriteIndented = true });
+            
+            var dir = Path.GetDirectoryName(_settingsFilePath);
+            if (!string.IsNullOrEmpty(dir))
+            {
+                Directory.CreateDirectory(dir);
+            }
+
+            await File.WriteAllTextAsync(tempPath, json, ct);
+            
+            if (File.Exists(_settingsFilePath))
+            {
+                File.Replace(tempPath, _settingsFilePath, null);
+            }
+            else
+            {
+                File.Move(tempPath, _settingsFilePath);
+            }
+
+            _logger.LogInformation("Settings saved atomically to {Path}", _settingsFilePath);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to save settings file to {Path}.", _settingsFilePath);
+            if (File.Exists(tempPath))
+            {
+                try { File.Delete(tempPath); } catch { }
+            }
+            throw;
+        }
+    }
+
+    private static RecordingOptions GetDefaultOptions()
+    {
         var defaultVideos = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyVideos), "KING Recorder");
         Directory.CreateDirectory(defaultVideos);
 
@@ -69,17 +129,13 @@ public sealed class SettingsManager
         );
     }
 
-    public async Task SaveSettingsAsync(RecordingOptions options, CancellationToken ct = default)
+    private static void ValidateOptions(RecordingOptions options)
     {
-        try
-        {
-            var json = JsonSerializer.Serialize(options, new JsonSerializerOptions { WriteIndented = true });
-            await File.WriteAllTextAsync(_settingsFilePath, json, ct);
-            _logger.LogInformation("Settings saved successfully to {Path}", _settingsFilePath);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to save settings file.");
-        }
+        if (options.MicrophoneVolume is < 0f or > 1f)
+            throw new ArgumentOutOfRangeException(nameof(options), "Microphone volume must be between 0.0 and 1.0.");
+        if (options.SystemAudioVolume is < 0f or > 1f)
+            throw new ArgumentOutOfRangeException(nameof(options), "System audio volume must be between 0.0 and 1.0.");
+        if (string.IsNullOrWhiteSpace(options.OutputDirectory))
+            throw new ArgumentException("Output directory cannot be empty.", nameof(options));
     }
 }
