@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Windows.Graphics;
@@ -39,20 +40,58 @@ public sealed class Direct3D11CaptureEngine : IScreenCaptureService
 
     public Task<IReadOnlyList<DisplayInfo>> GetDisplaysAsync(CancellationToken ct = default)
     {
-        // Enumerate displays using Windows EnumDisplayMonitors API
-        var displays = new List<DisplayInfo>
+        var displays = new List<DisplayInfo>();
+
+        try
         {
-            new DisplayInfo(
-                DeviceId: @"\\.\DISPLAY1",
-                DisplayName: "Display 1 (Primary)",
-                Width: 1920,
-                Height: 1080,
-                RefreshRateHz: 60,
-                DpiScale: 1.0,
-                IsPrimary: true,
-                Bounds: new Rectangle(0, 0, 1920, 1080)
-            )
-        };
+            bool success = EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, (IntPtr hMonitor, IntPtr hdcMonitor, ref RECT lprcMonitor, IntPtr dwData) =>
+            {
+                var mi = new MONITORINFOEX();
+                mi.cbSize = (uint)Marshal.SizeOf(mi);
+                if (GetMonitorInfo(hMonitor, ref mi))
+                {
+                    int width = mi.rcMonitor.Right - mi.rcMonitor.Left;
+                    int height = mi.rcMonitor.Bottom - mi.rcMonitor.Top;
+                    bool isPrimary = (mi.dwFlags & 0x00000001) != 0; // MONITORINFOF_PRIMARY
+
+                    string deviceName = new string(mi.szDevice).TrimEnd('\0');
+
+                    displays.Add(new DisplayInfo(
+                        DeviceId: deviceName,
+                        DisplayName: $"Display {displays.Count + 1}{(isPrimary ? " (Primary)" : "")}",
+                        Width: width,
+                        Height: height,
+                        RefreshRateHz: 60,
+                        DpiScale: 1.0,
+                        IsPrimary: isPrimary,
+                        Bounds: new Rectangle(mi.rcMonitor.Left, mi.rcMonitor.Top, width, height)
+                    ));
+                }
+                return true;
+            }, IntPtr.Zero);
+
+            if (!success || displays.Count == 0)
+            {
+                throw new CaptureDeviceException("Failed to enumerate physical displays via Win32 API.");
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "EnumDisplayMonitors failed or running in non-Windows container. Using primary fallback.");
+            if (displays.Count == 0)
+            {
+                displays.Add(new DisplayInfo(
+                    DeviceId: @"\\.\DISPLAY1",
+                    DisplayName: "Display 1 (Primary Fallback)",
+                    Width: 1920,
+                    Height: 1080,
+                    RefreshRateHz: 60,
+                    DpiScale: 1.0,
+                    IsPrimary: true,
+                    Bounds: new Rectangle(0, 0, 1920, 1080)
+                ));
+            }
+        }
 
         return Task.FromResult<IReadOnlyList<DisplayInfo>>(displays);
     }
@@ -60,13 +99,47 @@ public sealed class Direct3D11CaptureEngine : IScreenCaptureService
     public Task<IReadOnlyList<WindowInfo>> GetOpenWindowsAsync(CancellationToken ct = default)
     {
         var windows = new List<WindowInfo>();
-        // Windows enumeration boundary
+
+        try
+        {
+            EnumWindows((hWnd, lParam) =>
+            {
+                if (IsWindowVisible(hWnd) && GetWindowTextLength(hWnd) > 0)
+                {
+                    var sb = new StringBuilder(256);
+                    GetWindowText(hWnd, sb, sb.Capacity);
+                    string title = sb.ToString();
+
+                    GetWindowRect(hWnd, out RECT rect);
+                    int width = rect.Right - rect.Left;
+                    int height = rect.Bottom - rect.Top;
+
+                    if (width > 100 && height > 100)
+                    {
+                        windows.Add(new WindowInfo(
+                            Handle: hWnd,
+                            Title: title,
+                            ProcessName: "app.exe",
+                            Bounds: new Rectangle(rect.Left, rect.Top, width, height),
+                            IsMinimized: false
+                        ));
+                    }
+                }
+                return true;
+            }, IntPtr.Zero);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "EnumWindows failed or running in non-Windows container.");
+        }
+
         return Task.FromResult<IReadOnlyList<WindowInfo>>(windows);
     }
 
     public Task StartCaptureAsync(RecordingOptions options, CancellationToken ct = default)
     {
         _logger.LogInformation("Initializing Direct3D 11 screen capture in mode {Mode}", options.Mode);
+        // Phase 1 foundation interop
         IsCapturing = true;
         return Task.CompletedTask;
     }
@@ -85,5 +158,50 @@ public sealed class Direct3D11CaptureEngine : IScreenCaptureService
         StopCaptureAsync().GetAwaiter().GetResult();
         _framePool?.Dispose();
         _framePool = null;
+    }
+
+    // Win32 Interop P/Invoke
+    private delegate bool MonitorEnumProc(IntPtr hMonitor, IntPtr hdcMonitor, ref RECT lprcMonitor, IntPtr dwData);
+    private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    private static extern bool EnumDisplayMonitors(IntPtr hdc, IntPtr lprcClip, MonitorEnumProc lpfnEnum, IntPtr dwData);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFOEX lpmi);
+
+    [DllImport("user32.dll")]
+    private static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    private static extern bool IsWindowVisible(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern int GetWindowTextLength(IntPtr hWnd);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
+
+    [DllImport("user32.dll")]
+    private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct RECT
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct MONITORINFOEX
+    {
+        public uint cbSize;
+        public RECT rcMonitor;
+        public RECT rcWork;
+        public uint dwFlags;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
+        public char[] szDevice;
     }
 }
