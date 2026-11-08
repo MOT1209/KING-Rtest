@@ -2,5 +2,7 @@
   "name": "KING RECORDER",
   "description": "Professional Screen Recording Studio for Windows with high-performance screen, webcam, mic, and system audio capture.",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }
