@@ -2,7 +2,7 @@
 
 **Version:** 1.0.0 MVP  
 **Target Platform:** Windows 10 (19041+) / Windows 11  
-**Architecture:** Native Windows Desktop (WinUI 3 + Windows App SDK 1.5 + .NET 8 LTS)  
+**Architecture:** Native Windows Desktop (WinUI 3 + Windows App SDK 1.5 + .NET 10 LTS)  
 **Design Identity:** Premium KING Design System (Charcoal Black, Gold, Recording Red)
 
 ---
@@ -15,27 +15,32 @@ The repository is structured as a native Visual Studio solution with an accompan
 
 ```text
 KING-Rtest/
-├── KINGRecorder.sln                     # Visual Studio 2022 Solution
-├── Directory.Build.props                # Global .NET 8 & Windows App SDK properties
+├── KINGRecorder.sln                     # Visual Studio Solution
+├── Directory.Build.props                # Global .NET 10 LTS & Windows App SDK properties
+├── Directory.Packages.props             # Central Package Version Management
+├── global.json                          # SDK Pinning (.NET 10)
 │
 ├── src/
 │   ├── KINGRecorder.App/                # WinUI 3 Application Entry & Views
 │   ├── KINGRecorder.Core/               # Domain Models, Interfaces & Contracts
-│   ├── KINGRecorder.Capture/            # Windows.Graphics.Capture & Direct3D 11
+│   ├── KINGRecorder.Capture/            # Screen Capture & Direct3D 11 P/Invoke
 │   ├── KINGRecorder.Audio/              # WASAPI System Loopback & Microphone
 │   ├── KINGRecorder.Recording/          # Compositor & Media Foundation Encoder
 │   └── KINGRecorder.Infrastructure/     # Local JSON Settings & Storage
 │
 ├── tests/
 │   ├── KINGRecorder.Core.Tests/         # State machine & domain tests
-│   ├── KINGRecorder.Capture.Tests/      # DPI scaling & bounds tests
-│   └── KINGRecorder.Recording.Tests/    # Audio limiter & sync tests
+│   ├── KINGRecorder.Capture.Tests/      # Native layout, DPI scaling & bounds tests
+│   ├── KINGRecorder.Recording.Tests/    # Audio limiter & engine lifecycle tests
+│   └── KINGRecorder.Infrastructure.Tests/ # Settings persistence & MyVideos tests
 │
 ├── docs/
+│   ├── FINAL_ENGINEERING_AUDIT.md       # Comprehensive final engineering audit
 │   ├── REPAIR_AUDIT.md                  # Comprehensive capability & risk audit
 │   ├── MIGRATION_PLAN.md                # Multi-phase engineering roadmap
 │   ├── ARCHITECTURE.md                  # Detailed architectural specification
-│   └── DEPENDENCIES.md                  # Evaluated packages & licensing
+│   ├── DEPENDENCIES.md                  # Evaluated packages & licensing
+│   └── BUILD_VALIDATION.md              # Build & test verification guide
 │
 └── prototype/                           # Preserved interactive React prototype
 ```
@@ -46,10 +51,10 @@ KING-Rtest/
 
 ### Prerequisites
 - Windows 10 (Build 19041+) or Windows 11.
-- **Visual Studio 2022** (Version 17.9+) with:
+- **Visual Studio** with:
   - *.NET Desktop Development* workload.
   - *Windows App SDK C# Templates*.
-  - *.NET 8.0 SDK*.
+  - *.NET 10.0 SDK*.
 
 ### Command Line Build
 Open a Visual Studio Developer Command Prompt or PowerShell:

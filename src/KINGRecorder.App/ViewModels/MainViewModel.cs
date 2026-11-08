@@ -9,7 +9,7 @@ using KINGRecorder.Infrastructure;
 
 namespace KINGRecorder.App.ViewModels;
 
-public sealed partial class MainViewModel : ObservableObject
+public sealed partial class MainViewModel : ObservableObject, IDisposable
 {
     private readonly IRecordingEngine _recordingEngine;
     private readonly SettingsManager _settingsManager;
@@ -41,6 +41,11 @@ public sealed partial class MainViewModel : ObservableObject
         _currentOptions = SettingsManager.GetDefaultOptions();
 
         _recordingEngine.StateChanged += OnRecordingStateChanged;
+    }
+
+    public void Dispose()
+    {
+        _recordingEngine.StateChanged -= OnRecordingStateChanged;
     }
 
     public async Task InitializeAsync()
