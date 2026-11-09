@@ -50,7 +50,7 @@ public interface IEncoderService : IDisposable
     Task FinalizeAsync(CancellationToken ct = default);
 }
 
-public interface IRecordingEngine : IDisposable
+public interface IRecordingEngine : IDisposable, IAsyncDisposable
 {
     RecordingState State { get; }
     TimeSpan ElapsedDuration { get; }
@@ -62,6 +62,13 @@ public interface IRecordingEngine : IDisposable
     Task<RecordingItem> StopRecordingAsync(CancellationToken ct = default);
     Task CancelRecordingAsync(CancellationToken ct = default);
     Task<string> CaptureScreenshotAsync(RecordingOptions options, CancellationToken ct = default);
+
+    /// <summary>
+    /// Coordinated shutdown used by the application: refuses new operations, waits for an in-flight
+    /// Start/Stop to finish, aborts the active session, removes its incomplete output and then releases
+    /// the engine's event subscribers. Safe to call repeatedly; never disposes container-owned services.
+    /// </summary>
+    Task ShutdownAsync();
 }
 
 public class FrameArrivedEventArgs : EventArgs

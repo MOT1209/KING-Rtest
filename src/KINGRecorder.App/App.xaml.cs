@@ -1,6 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
-using KINGRecorder.App.ViewModels;
+using KINGRecorder.Presentation.ViewModels;
 
 namespace KINGRecorder.App;
 

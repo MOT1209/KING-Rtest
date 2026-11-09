@@ -1,7 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Windowing;
 using WinRT.Interop;
-using KINGRecorder.App.ViewModels;
+using KINGRecorder.Presentation.ViewModels;
 
 namespace KINGRecorder.App;
 

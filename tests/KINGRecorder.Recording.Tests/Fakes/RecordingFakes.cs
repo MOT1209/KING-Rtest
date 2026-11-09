@@ -125,6 +125,12 @@ internal sealed class FakeEncoderService : IEncoderService
     /// <summary>When true, initialization creates the output file so a session can be finalized.</summary>
     public bool WriteOutputFile { get; set; }
 
+    /// <summary>
+    /// When set, the output file is written first and this exception is thrown afterwards, so a test can
+    /// prove that a failed initialization removes the partially written file.
+    /// </summary>
+    public Exception? FailAfterWritingOutput { get; set; }
+
     /// <summary>Optional gate used to force deterministic interleaving in concurrency tests.</summary>
     public TaskCompletionSource? InitializeGate { get; set; }
 
@@ -146,6 +152,11 @@ internal sealed class FakeEncoderService : IEncoderService
         if (WriteOutputFile)
         {
             await File.WriteAllTextAsync(outputPath, "deterministic fake recording payload", ct).ConfigureAwait(false);
+        }
+
+        if (FailAfterWritingOutput is not null)
+        {
+            throw FailAfterWritingOutput;
         }
     }
 
