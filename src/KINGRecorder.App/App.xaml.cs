@@ -15,9 +15,15 @@ public partial class App : Application
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
-        var vm = Program.Services.GetRequiredService<MainViewModel>();
-        _mainWindow = new MainWindow(vm);
-        _mainWindow.Activate();
-        _ = vm.InitializeAsync();
+        var viewModel = Program.Services.GetRequiredService<MainViewModel>();
+        var window = new MainWindow(viewModel);
+
+        // Unsubscribe the ViewModel from engine events when the window closes so a transient
+        // ViewModel cannot keep the singleton engine alive after shutdown.
+        window.Closed += (_, _) => viewModel.Dispose();
+
+        _mainWindow = window;
+        window.Activate();
+        _ = viewModel.InitializeAsync();
     }
 }

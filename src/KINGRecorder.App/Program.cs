@@ -4,13 +4,11 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
+using KINGRecorder.App.ViewModels;
 using KINGRecorder.Audio;
-using KINGRecorder.Capture.ScreenCapture;
-using KINGRecorder.Core.Interfaces;
+using KINGRecorder.Capture;
 using KINGRecorder.Infrastructure;
 using KINGRecorder.Recording;
-using KINGRecorder.Recording.Stubs;
-using KINGRecorder.App.ViewModels;
 
 namespace KINGRecorder.App;
 
@@ -25,14 +23,28 @@ public static class Program
 
         var serviceCollection = new ServiceCollection();
         ConfigureServices(serviceCollection);
-        Services = serviceCollection.BuildServiceProvider();
 
-        Application.Start((p) =>
+        Services = serviceCollection.BuildServiceProvider(new ServiceProviderOptions
         {
-            var context = new DispatcherQueueSynchronizationContext(DispatcherQueue.GetForCurrentThread());
-            SynchronizationContext.SetSynchronizationContext(context);
-            _ = new App();
+            ValidateOnBuild = true,
+            ValidateScopes = true
         });
+
+        try
+        {
+            Application.Start((p) =>
+            {
+                var context = new DispatcherQueueSynchronizationContext(DispatcherQueue.GetForCurrentThread());
+                SynchronizationContext.SetSynchronizationContext(context);
+                _ = new App();
+            });
+        }
+        finally
+        {
+            // The composition root owns every disposable service, including the capture/audio/encoder
+            // instances that RecordingEngine collaborates with. Release them exactly once on exit.
+            (Services as IDisposable)?.Dispose();
+        }
     }
 
     private static void ConfigureServices(IServiceCollection services)
@@ -43,19 +55,13 @@ public static class Program
             builder.SetMinimumLevel(LogLevel.Debug);
         });
 
-        // Core & Infrastructure
-        services.AddSingleton<SettingsManager>();
+        // Layer registrations live next to their implementations so they can be verified by unit tests.
+        services.AddKingRecorderInfrastructure();
+        services.AddKingRecorderCapture();
+        services.AddKingRecorderAudio();
+        services.AddKingRecorderRecording();
 
-        // Hardware Services
-        services.AddSingleton<IScreenCaptureService, Direct3D11CaptureEngine>();
-        services.AddSingleton<IAudioCaptureService, WasapiAudioCaptureService>();
-        services.AddSingleton<IVideoCompositor, UnavailableVideoCompositor>();
-        services.AddSingleton<IEncoderService, UnavailableEncoderService>();
-
-        // Recording Engine
-        services.AddSingleton<IRecordingEngine, RecordingEngine>();
-
-        // ViewModels
+        // Presentation
         services.AddTransient<MainViewModel>();
     }
 }

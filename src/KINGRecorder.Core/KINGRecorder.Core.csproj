@@ -6,9 +6,4 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>KINGRecorder.Core</RootNamespace>
   </PropertyGroup>
-
-  <ItemGroup>
-    <PackageReference Include="CommunityToolkit.Mvvm" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
-  </ItemGroup>
 </Project>

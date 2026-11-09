@@ -41,6 +41,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         _currentOptions = SettingsManager.GetDefaultOptions();
 
         _recordingEngine.StateChanged += OnRecordingStateChanged;
+        _recordingEngine.DurationUpdated += OnDurationUpdated;
     }
 
     private bool _disposed;
@@ -54,6 +55,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
         _disposed = true;
         _recordingEngine.StateChanged -= OnRecordingStateChanged;
+        _recordingEngine.DurationUpdated -= OnDurationUpdated;
     }
 
     public async Task InitializeAsync()
@@ -71,6 +73,16 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         {
             ErrorMessage = $"Failed to load settings: {ex.Message}";
         }
+    }
+
+    private void OnDurationUpdated(object? sender, TimeSpan elapsed)
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        DurationText = elapsed.ToString(@"hh\:mm\:ss");
     }
 
     private void OnRecordingStateChanged(object? sender, RecordingStateChangedEventArgs e)

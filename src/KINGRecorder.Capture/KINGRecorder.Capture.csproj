@@ -15,5 +15,6 @@
     <PackageReference Include="SharpDX.Direct3D11" />
     <PackageReference Include="SharpDX.DXGI" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
   </ItemGroup>
 </Project>
