@@ -12,7 +12,8 @@ not exist yet. Sections 5 and 6 are *target design*, not shipped behaviour.
 ## 1. Project layout and dependency direction
 
 ```text
-KINGRecorder.App  (WinUI 3 shell, MVVM, composition root)
+KINGRecorder.App  (WinUI 3 shell, DispatcherQueue adapter, composition root)
+   ├── KINGRecorder.Presentation    (MainViewModel, IUiDispatcher; no WinUI reference — unit tested)
    ├── KINGRecorder.Core            (domain: models, enums, interfaces, exceptions, state table) — no dependencies
    ├── KINGRecorder.Capture         (Win32 enumeration today; Windows.Graphics.Capture in Phase 1)
    ├── KINGRecorder.Audio           (device enumeration today; WASAPI in Phase 3)
@@ -31,6 +32,9 @@ graph TD
     App --> Audio[KINGRecorder.Audio]
     App --> Recording[KINGRecorder.Recording]
     App --> Infra[KINGRecorder.Infrastructure]
+    App --> Pres[KINGRecorder.Presentation<br/>ViewModel + IUiDispatcher]
+    Pres --> Core
+    Pres --> Infra
     Capture --> Core
     Audio --> Core
     Recording --> Core
@@ -62,11 +66,15 @@ returns.
 
 1. **The DI container owns every disposable service.** `RecordingEngine` collaborates with capture/audio/compositor/
    encoder but never disposes them.
-2. `RecordingEngine.Dispose()` releases only its own state: it stops an active pipeline best-effort, resets the
-   stopwatch, and clears its event handlers. It is idempotent.
-3. `MainViewModel` is transient and unsubscribes from engine events in `Dispose`, which `App.OnLaunched` hooks to
-   `Window.Closed`.
-4. Unavailable capabilities are registered as explicit throwing stubs, never as silent no-ops and never as fake
+2. `RecordingEngine` releases only its own state: `ShutdownAsync()` waits for an in-flight lifecycle operation,
+   aborts the started pipeline stages, deletes the incomplete output, resets the stopwatch and clears its event
+   handlers. `Dispose()` is the bounded synchronous fallback for callers that cannot await (5 s per gate, then it
+   logs and defers). Both are idempotent and neither disposes capture/audio/compositor/encoder.
+3. `Program.Main` awaits `IRecordingEngine.ShutdownAsync()` in a `finally` block **before** disposing the service
+   provider, so no container-owned service is released while the engine still uses it.
+4. `MainViewModel` is transient, marshals engine notifications through `IUiDispatcher`, and unsubscribes exactly
+   once in `Dispose`, which `App.OnLaunched` hooks to `Window.Closed`.
+5. Unavailable capabilities are registered as explicit throwing stubs, never as silent no-ops and never as fake
    producers of output.
 
 ---
@@ -116,9 +124,35 @@ Guarantees implemented in Phase 0.2:
   no blanket rewrapping).
 - **Honest pause.** `PauseRecordingAsync` throws `NotSupportedException` while `Recording` and keeps recording,
   because no capture/encode pipeline exists to suspend. `Paused` remains defined for the future pipeline.
+- **Isolated notifications (Phase 0.2.1).** The transition is committed before any subscriber runs; each subscriber
+  is invoked inside its own `try`/`catch`, and failures are logged with the transition and the subscriber type. A
+  subscriber can neither abort a transition, skip later subscribers, nor replace the recording exception.
+- **Coordinated shutdown (Phase 0.2.1).** `ShutdownAsync` takes both gates, aborts the session, removes its
+  incomplete file and refuses further operations; the state then moves to `Idle` when the table allows it, otherwise
+  to `Error` with the shutdown reason.
+- **No incomplete output.** Failed or cancelled initialization deletes the file the encoder had already opened.
 
 `DurationUpdated` is raised once with the final duration on a successful stop. Periodic ticking requires the real
 capture clock and arrives with Phase 1.
+
+### UI dispatch path (Phase 0.2.1)
+
+```text
+RecordingEngine (any thread)
+   └── StateChanged / DurationUpdated
+          └── MainViewModel handler          (never touches bindings)
+                 └── IUiDispatcher.TryEnqueue(...)        Presentation: no WinUI types
+                        └── DispatcherQueueUiDispatcher   App: DispatcherQueue.TryEnqueue
+                               └── queued callback: re-checks IsDisposed, then sets observable properties
+```
+
+- `Core`, `Recording` and `Presentation` contain no WinUI reference, which is what lets
+  `KINGRecorder.Presentation.Tests` drive the ViewModel with a deterministic fake dispatcher and no XAML host.
+- Notifications are always queued, never applied inline, so the UI observes the engine's raise order exactly.
+- A rejected enqueue (`false`, dispatcher shutting down) is logged and dropped; a throwing dispatcher is caught and
+  logged, so it cannot reach the engine's thread.
+- `Dispose` is guarded by `Interlocked.Exchange` and every queued callback re-checks the flag, so work queued before
+  shutdown cannot reach a closed window.
 
 ---
 
@@ -182,4 +216,7 @@ as arithmetic inside a test — no production mixer exists.
 | `Recording` references `Capture`/`Audio` without using them | Coupling | Remove when the pipeline lands |
 | SharpDX 4.2.0 is maintenance-only | Long-term | Planned migration to Vortice.Windows/CsWin32, not part of Phase 0.2 |
 | No `<Platforms>`/`RuntimeIdentifier` declared | `AnyCPU` fallback surprises | Always pass `-p:Platform=x64`; revisit when packaging is designed |
-| Composition root still lives in the WinUI project's `Program.cs` | Only the per-layer extensions are unit tested | Extract a UI-agnostic host when the app gains a second host (e.g. packaging/tests) |
+| Composition root still lives in the WinUI project's `Program.cs` | Layer registrations and the ViewModel are unit tested; the final graph wiring is not | `ValidateOnBuild` fails startup on a broken graph; extract a UI-agnostic host when the app gains a second host |
+| The real `DispatcherQueue` adapter is only exercised by a fake | A genuine queue-shutdown path is not covered automatically | Manual desktop check before the dashboard is called done; the adapter is ~15 lines with no logic beyond `TryEnqueue` |
+| Synchronous `Dispose()` defers cleanup when an operation outlives 5 s | A foreign caller could exit without stopping the pipeline | The application always awaits `ShutdownAsync()`; the bound and the deferral are documented on the method |
+| A failed `StopRecordingAsync` keeps its partially written file | A corrupt file can remain after a stop failure | Phase 0.2.1 covers failed/cancelled *initialization* only; extend `DeleteIncompleteOutput` to the stop-failure path together with the encoder work |
