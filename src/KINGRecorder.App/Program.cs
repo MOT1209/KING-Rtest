@@ -71,7 +71,9 @@ public static class Program
         catch (Exception ex)
         {
             // Shutdown must not take the process down on exit; the container is disposed next regardless.
-            services.GetService<ILogger<Program>>()?.LogError(ex, "Recording engine shutdown did not complete cleanly.");
+            services.GetService<ILoggerFactory>()
+                ?.CreateLogger("KINGRecorder.App.Program")
+                .LogError(ex, "Recording engine shutdown did not complete cleanly.");
         }
     }
 
