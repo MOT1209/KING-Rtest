@@ -1,7 +1,7 @@
 # KING RECORDER — Comprehensive Final Engineering Audit
 
 ## 1. Executive Summary
-This document records the official result of the comprehensive project repair and production foundation stabilization for **KING RECORDER v1.0.0 MVP** (Phase 0.1.4).
+This document records the official result of the comprehensive project repair, production foundation stabilization, and CI integration for **KING RECORDER v1.0.0 MVP** (Phase 0.1.5).
 
 All solution projects target **.NET 10 LTS** (`net10.0-windows10.0.19041.0`) with `<TreatWarningsAsErrors>true</TreatWarningsAsErrors>`, central package management (`Directory.Packages.props`), SDK pinning (`global.json`), valid non-zero Visual Studio solution GUIDs, and consistent `Debug|x64` and `Release|x64` build mappings.
 
@@ -17,14 +17,14 @@ All solution projects target **.NET 10 LTS** (`net10.0-windows10.0.19041.0`) wit
 | **Native Interop (`RECT`)** | VERIFIED | Tested 16-byte size and field offsets in `NativeStructLayoutTests.cs` |
 | **Production DPI Scaling** | VERIFIED | Tested `Direct3D11CaptureEngine.CalculateDpiScale` for 96, 120, 144, 192, 288, 0 DPI |
 | **Enumeration Cancellation** | VERIFIED | Tested `OperationCanceledException` propagation on cancelled tokens |
-| **Resource Disposal Lifecycle** | VERIFIED | Tested idempotent `Dispose()` on `Direct3D11CaptureEngine` and `RecordingEngine` |
+| **Resource Disposal Lifecycle** | VERIFIED | Tested idempotent `Dispose()` on `Direct3D11CaptureEngine`, `WasapiAudioCaptureService`, and `RecordingEngine` |
 | **Dynamic Video Directory** | VERIFIED | Dynamic resolution via `Environment.SpecialFolder.MyVideos` tested in `SettingsDefaultTests.cs` |
 | **Settings Persistence & Validation** | VERIFIED | Atomic write, JSON deserialization, and NaN/Infinity checks tested in `SettingsManagerTests.cs` |
 | **State Machine Transition Guards** | VERIFIED | Invalid transitions and error fallback tested in `RecordingEngineLifecycleTests.cs` |
 | **Windows Screen Capture Engine** | NOT IMPLEMENTED | Scheduled for Phase 1 (`Windows.Graphics.Capture` + Direct3D 11 frame pipeline) |
 | **WASAPI Audio Capture Engine** | NOT IMPLEMENTED | Scheduled for Phase 3 (System loopback + Microphone WASAPI clients) |
 | **Media Foundation Video Encoder** | NOT IMPLEMENTED | Scheduled for Phase 4 (`IMFSinkWriter` MP4 multiplexer) |
-| **Windows GitHub Actions CI** | BLOCKED (PAT Scope) | Workflow YAML authored; direct push blocked by PAT missing `workflow` scope |
+| **Windows GitHub Actions CI** | BLOCKED (PAT Scope) | Workflow authored at `.github/workflows/windows-build.yml`. Push rejected by GitHub API: Personal Access Token requires `workflow` scope to modify `.github/workflows/*` |
 
 ---
 
