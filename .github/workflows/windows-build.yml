@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - main
-      - 'phase-0.2-foundation-repair'
+      - 'phase-*'
       - 'repair/**'
   pull_request:
     branches:
