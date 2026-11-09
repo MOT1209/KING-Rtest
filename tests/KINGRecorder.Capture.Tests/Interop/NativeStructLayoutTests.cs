@@ -49,7 +49,9 @@ public class NativeStructLayoutTests
         Assert.Equal(80, (int)Marshal.OffsetOf<Direct3D11CaptureEngine.DEVMODE>(nameof(Direct3D11CaptureEngine.DEVMODE.dmPositionY)));
         Assert.Equal(84, (int)Marshal.OffsetOf<Direct3D11CaptureEngine.DEVMODE>(nameof(Direct3D11CaptureEngine.DEVMODE.dmDisplayOrientation)));
         Assert.Equal(88, (int)Marshal.OffsetOf<Direct3D11CaptureEngine.DEVMODE>(nameof(Direct3D11CaptureEngine.DEVMODE.dmDisplayFixedOutput)));
-        Assert.Equal(102, (int)Marshal.OffsetOf<Direct3D11CaptureEngine.DEVMODE>(nameof(Direct3D11CaptureEngine.DEVMODE.dmFormName)));
+        // dmCollate ends at 102, where DEVMODEW's dmFormName (WCHAR[32]) begins; the next projected field must
+        // still land at 166 once that 64-byte region is skipped.
+        Assert.Equal(100, (int)Marshal.OffsetOf<Direct3D11CaptureEngine.DEVMODE>(nameof(Direct3D11CaptureEngine.DEVMODE.dmCollate)));
         Assert.Equal(166, (int)Marshal.OffsetOf<Direct3D11CaptureEngine.DEVMODE>(nameof(Direct3D11CaptureEngine.DEVMODE.dmLogPixels)));
         Assert.Equal(168, (int)Marshal.OffsetOf<Direct3D11CaptureEngine.DEVMODE>(nameof(Direct3D11CaptureEngine.DEVMODE.dmBitsPerPel)));
         Assert.Equal(172, (int)Marshal.OffsetOf<Direct3D11CaptureEngine.DEVMODE>(nameof(Direct3D11CaptureEngine.DEVMODE.dmPelsWidth)));

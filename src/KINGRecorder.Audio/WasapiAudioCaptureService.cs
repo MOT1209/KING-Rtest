@@ -19,7 +19,11 @@ public sealed class WasapiAudioCaptureService : IAudioCaptureService
     private float _micGain = 0.85f;
     private float _sysGain = 0.90f;
 
+    // Declared by IAudioCaptureService, but only raised once the WASAPI client from Phase 3 delivers buffers.
+#pragma warning disable CS0067 // Event is never raised until the Phase 3 capture loop exists.
     public event EventHandler<AudioDataEventArgs>? AudioDataAvailable;
+#pragma warning restore CS0067
+
     public bool IsCapturing { get; private set; }
 
     public WasapiAudioCaptureService(ILogger<WasapiAudioCaptureService> logger)
@@ -34,9 +38,24 @@ public sealed class WasapiAudioCaptureService : IAudioCaptureService
         {
             using var enumerator = new MMDeviceEnumerator();
             var endpoints = enumerator.EnumerateAudioEndPoints(DataFlow.Capture, DeviceState.Active);
+
+            string? defaultEndpointId = null;
+            try
+            {
+                using var defaultEndpoint = enumerator.GetDefaultAudioEndpoint(DataFlow.Capture, Role.Communications);
+                defaultEndpointId = defaultEndpoint.ID;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "No default capture endpoint is available; no microphone will be reported as default.");
+            }
+
             foreach (var ep in endpoints)
             {
-                devices.Add(new AudioDeviceInfo(ep.ID, ep.FriendlyName, ep.Selected, true));
+                bool isDefault = defaultEndpointId is not null
+                    && string.Equals(ep.ID, defaultEndpointId, StringComparison.OrdinalIgnoreCase);
+
+                devices.Add(new AudioDeviceInfo(ep.ID, ep.FriendlyName, isDefault, true));
             }
         }
         catch (Exception ex)

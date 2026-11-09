@@ -25,16 +25,16 @@ public sealed class Direct3D11CaptureEngine : IScreenCaptureService, IAsyncDispo
 {
     private readonly ILogger<Direct3D11CaptureEngine> _logger;
     private readonly object _syncLock = new();
-    private GraphicsCaptureItem? _captureItem;
     private Direct3D11CaptureFramePool? _framePool;
     private GraphicsCaptureSession? _session;
     private Device? _d3dDevice;
     private IDirect3DDevice? _winRtDevice;
-    private SizeInt32 _lastSize;
-    private long _capturedFramesCount;
     private bool _disposed;
 
+    // Declared by IScreenCaptureService, but only raised once the Phase 1 frame pool delivers frames.
+#pragma warning disable CS0067 // Event is never raised until the Windows.Graphics.Capture loop exists.
     public event EventHandler<FrameArrivedEventArgs>? FrameArrived;
+#pragma warning restore CS0067
     public bool IsCapturing { get; private set; }
 
     public Direct3D11CaptureEngine(ILogger<Direct3D11CaptureEngine> logger)
@@ -294,7 +294,7 @@ public sealed class Direct3D11CaptureEngine : IScreenCaptureService, IAsyncDispo
     {
         lock (_syncLock)
         {
-            _logger.LogInformation("Stopping Direct3D 11 screen capture. Total frames: {Count}", _capturedFramesCount);
+            _logger.LogInformation("Stopping Direct3D 11 screen capture.");
             IsCapturing = false;
             _session?.Dispose();
             _session = null;
@@ -326,8 +326,6 @@ public sealed class Direct3D11CaptureEngine : IScreenCaptureService, IAsyncDispo
 
             _winRtDevice?.Dispose();
             _winRtDevice = null;
-
-            FrameArrived = null;
         }
 
         GC.SuppressFinalize(this);
@@ -457,9 +455,9 @@ public sealed class Direct3D11CaptureEngine : IScreenCaptureService, IAsyncDispo
         [FieldOffset(100)]
         public short dmCollate;
 
-        [FieldOffset(102)]
-        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
-        public string dmFormName;
+        // DEVMODEW holds dmFormName (WCHAR[32]) at 102..166. It is deliberately not projected: a reference
+        // field at that unaligned explicit offset makes the CLR reject the whole type with TypeLoadException,
+        // and display enumeration only needs dmFields and dmDisplayFrequency.
 
         [FieldOffset(166)]
         public ushort dmLogPixels;

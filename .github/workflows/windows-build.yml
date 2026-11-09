@@ -1,0 +1,78 @@
+name: Windows Build & Test
+
+on:
+  push:
+    branches:
+      - main
+      - 'phase-0.2-foundation-repair'
+      - 'repair/**'
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Restore, build (Debug/Release x64) and test
+    runs-on: windows-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Stage A - Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Stage A - Install .NET SDK from global.json
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Stage A - Report .NET environment
+        shell: pwsh
+        run: |
+          dotnet --info
+          dotnet --list-sdks
+
+      - name: Stage B - Restore solution
+        shell: pwsh
+        run: dotnet restore KINGRecorder.sln
+
+      - name: Stage C - Build Debug x64
+        shell: pwsh
+        run: dotnet build KINGRecorder.sln -c Debug --no-restore -p:Platform=x64
+
+      - name: Stage D - Run automated tests
+        shell: pwsh
+        run: >
+          dotnet test KINGRecorder.sln
+          -c Debug --no-build -p:Platform=x64
+          --logger trx
+
+      - name: Stage E - Build Release x64
+        shell: pwsh
+        run: dotnet build KINGRecorder.sln -c Release --no-restore -p:Platform=x64
+
+      - name: Stage F - Upload TRX test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trx-test-results
+          path: '**/TestResults/**/*.trx'
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Stage F - Upload Release build output
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kingrecorder-release-x64
+          path: |
+            src/KINGRecorder.App/bin/**/Release/**
+          if-no-files-found: warn
+          retention-days: 14

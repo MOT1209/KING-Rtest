@@ -9,3 +9,15 @@ coverage/
 .playwright-cli/
 .aistudio/
 
+# .NET build and test outputs
+bin/
+obj/
+TestResults/
+*.trx
+*.coverage
+*.nupkg
+
+# IDE / tooling state
+.vs/
+*.user
+*.suo
