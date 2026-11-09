@@ -1,0 +1,339 @@
+MASTER ENGINEERING PROMPT
+KING RECORDER — Phase 0.1.5 Final CI Closure & Verification
+1. PROJECT INFORMATION
+Repository:
+https://github.com/MOT1209/KING-Rtest
+Project:
+KING RECORDER
+Target:
+Windows 10 (Build 19041+) and Windows 11
+Architecture:
+Native Windows Desktop Application
+Technology:
+C#
+WinUI 3
+Windows App SDK
+.NET 10
+Direct3D 11
+Windows Graphics Capture
+WASAPI
+Windows Media Foundation
+Current Branch:
+main
+Required Working Branch:
+repair/phase-0.1.5-final-ci-closure
+Project Identity:
+Premium KING Design System
+Charcoal Black
+Gold
+Recording Red
+Version:
+1.0.0 MVP
+2. YOUR ROLE
+Act as a senior engineering team consisting of:
+Senior Windows Desktop Engineer
+Senior C# / .NET Architect
+Windows CI/CD Engineer
+GitHub Actions Specialist
+Native Windows Interop Engineer
+QA and Test Automation Engineer
+You are responsible for completing Phase 0.1.5 with verifiable engineering evidence.
+Do not merely write documentation or claim completion.
+You must inspect the actual repository, implement the required changes, execute available validation, and report exact results.
+3. PROJECT CONTEXT
+KING RECORDER was originally a React/TypeScript prototype.
+The project is being transformed into a genuine native Windows desktop recording application.
+The native foundation has undergone several stabilization phases.
+Relevant recent commits:
+f5e9b876c2756d8efa9c081a43d437583c0dafd3
+73e0238080fb0048013ac6d6b3990e3ce1b40c7a
+dd15292462ae862982fd08e68b1e41582ba42ccd
+The latest engineering audit claims that the native foundation is ready for Phase 1.
+However, the latest audit explicitly reports:
+Windows GitHub Actions CI:
+BLOCKED (PAT Scope)
+The workflow was authored, but GitHub rejected the push because the Personal Access Token did not have the required workflow permission.
+The repository currently lacks verifiable evidence that the Windows workflow exists on main and has successfully executed.
+Your mission is to resolve this issue properly.
+4. PRIMARY OBJECTIVE
+Complete Phase 0.1.5 by delivering:
+A real GitHub Actions Windows workflow committed to the repository.
+Successful NuGet restore.
+Successful Debug x64 build.
+Successful automated test execution.
+Successful Release x64 build.
+Uploaded test reports and useful build artifacts.
+Updated engineering documentation backed by actual results.
+A verifiable successful GitHub Actions run.
+Do not start Phase 1 implementation during this task.
+5. MANDATORY INITIAL AUDIT
+Before modifying anything, inspect:
+Current repository state.
+Default branch.
+Latest commit.
+All relevant branches.
+Existing GitHub Actions workflows.
+Current solution and project structure.
+global.json.
+Directory.Build.props.
+Directory.Packages.props.
+KINGRecorder.sln.
+All test projects.
+Existing build scripts.
+Existing CI documentation.
+FINAL_ENGINEERING_AUDIT.md.
+BUILD_VALIDATION.md.
+README.md.
+Inspect whether the workflow already exists in another branch.
+Inspect whether there are existing workflow runs or check results.
+Do not create duplicate workflows.
+Identify the exact reason why the previous workflow was not committed.
+Prepare a short audit before implementation.
+6. GITHUB ACTIONS WORKFLOW
+Create or repair:
+.github/workflows/windows-build.yml
+The workflow must be production-quality and execute on Windows runners.
+Required triggers
+push to main
+push to repair/*
+pull_request targeting main
+workflow_dispatch
+Required permissions
+Use minimum permissions.
+For example:
+permissions:
+contents: read
+Do not request unnecessary write permissions.
+Runner
+Use:
+runs-on: windows-latest
+SDK
+Read the actual global.json first.
+Install the exact compatible .NET SDK version required by the repository.
+Do not silently change the project's SDK version.
+Required pipeline stages
+Stage A — Environment
+Checkout repository.
+Install the required .NET SDK.
+Print dotnet --info.
+Print dotnet --list-sdks.
+Stage B — Restore
+Execute:
+dotnet restore KINGRecorder.sln
+Stage C — Debug Build
+Execute:
+dotnet build KINGRecorder.sln -c Debug --no-restore -p:Platform=x64
+Stage D — Automated Tests
+Execute:
+dotnet test KINGRecorder.sln -c Debug --no-build -p:Platform=x64 --logger "trx;LogFileName=test_results.trx"
+Ensure test result files are generated.
+Stage E — Release Build
+Execute:
+dotnet build KINGRecorder.sln -c Release --no-restore -p:Platform=x64
+Stage F — Artifact Upload
+Upload:
+TRX test reports.
+Relevant build logs.
+Useful diagnostic artifacts.
+Use appropriate artifact names and retention periods.
+The workflow must fail if restore, build, or tests fail.
+Do not use continue-on-error to hide failures.
+Do not use || true to hide failures.
+Do not disable failing tests.
+Do not use fake test results.
+7. IMPORTANT: GITHUB WORKFLOW PERMISSION PROBLEM
+The previous implementation encountered:
+GitHub API rejected workflow modification because the Personal Access Token lacked the workflow scope.
+You must handle this transparently.
+First inspect the active GitHub connection and available repository permissions.
+If the available GitHub integration can commit workflow files:
+Create a dedicated repair branch.
+Commit the workflow file.
+Push the branch.
+Open a pull request targeting main if supported.
+Do not merge without authorization.
+If the GitHub connection cannot modify .github/workflows:
+Do not attempt to bypass GitHub security.
+Do not repeatedly retry the same unauthorized operation.
+Do not pretend the file was uploaded.
+Do not report success.
+Stop the blocked operation.
+Provide exact manual instructions to the repository owner.
+The repository owner must authorize a GitHub credential with the appropriate workflow permission or create the workflow through GitHub's own interface.
+Never expose tokens, secrets, or credentials in logs or reports.
+8. BUILD AND TEST VALIDATION
+Do not trust documentation alone.
+Verify the actual project configuration.
+Check:
+.NET SDK compatibility.
+Windows target framework.
+x64 solution configurations.
+Central package management.
+TreatWarningsAsErrors.
+Project references.
+Test project discovery.
+Package restore compatibility.
+WinUI 3 build requirements.
+Run every validation command available in the current environment.
+If the current environment is not Windows:
+Clearly distinguish local validation from Windows validation.
+Do not claim that a Windows build succeeded based on Linux or another unsupported environment.
+Use GitHub Actions as the authoritative Windows validation environment.
+Record:
+Exact command.
+Exit code.
+Actual result.
+Relevant errors.
+Test count.
+Passed tests.
+Failed tests.
+Skipped tests.
+Never invent numbers.
+9. DOCUMENTATION UPDATES
+Update the following files:
+A. docs/FINAL_ENGINEERING_AUDIT.md
+Record:
+Phase 0.1.5 status.
+Workflow path.
+Actual workflow run URL.
+Actual commit SHA.
+Restore result.
+Debug build result.
+Test result.
+Release build result.
+Remaining blockers.
+Do not mark CI as VERIFIED unless an actual successful Windows workflow run exists.
+B. docs/BUILD_VALIDATION.md
+Document:
+Workflow triggers.
+Windows runner.
+SDK installation.
+Build stages.
+Test execution.
+Artifact retention.
+How to inspect failed runs.
+C. README.md
+Update the implementation status only when supported by evidence.
+Do not claim that real screen capture, camera capture, audio capture, or MP4 encoding is implemented.
+Documentation integrity
+Do not replace old reports with fabricated successful results.
+Keep the distinction between:
+Implemented.
+Unit tested.
+CI verified.
+Manually verified on Windows.
+Not implemented.
+10. QUALITY REQUIREMENTS
+The workflow must:
+Use stable GitHub Actions versions.
+Have clear job and step names.
+Use minimum permissions.
+Avoid exposed credentials.
+Preserve useful error output.
+Generate test reports.
+Upload artifacts even when tests fail, where appropriate, without hiding the original job failure.
+Avoid redundant builds.
+Avoid unnecessary dependencies.
+Do not change application architecture unnecessarily.
+Do not upgrade dependencies without a demonstrated requirement.
+Do not rewrite the solution.
+Do not remove existing tests.
+Do not introduce fake implementations.
+Do not modify recording behavior in this phase.
+11. GIT RULES
+Use:
+repair/phase-0.1.5-final-ci-closure
+Rules:
+Never force push.
+Never delete main.
+Never overwrite unrelated work.
+Never commit secrets.
+Never merge into main without explicit authorization.
+Do not rewrite existing history.
+Keep the changes focused on Phase 0.1.5.
+Commit messages should follow conventional commits.
+Suggested commit:
+ci(windows): add verified Windows build and test workflow
+Documentation commit:
+docs(ci): record Phase 0.1.5 verification results
+12. COMPLETION CRITERIA
+Phase 0.1.5 can only be marked COMPLETE when all conditions are satisfied:
+[ ] Workflow exists in the repository.
+[ ] Workflow is committed and accessible on the intended branch.
+[ ] Windows GitHub Actions run has actually executed.
+[ ] NuGet restore succeeded.
+[ ] Debug x64 build succeeded.
+[ ] Automated tests succeeded.
+[ ] Release x64 build succeeded.
+[ ] TRX reports were generated.
+[ ] Artifacts were uploaded.
+[ ] Documentation matches actual results.
+[ ] No unresolved critical CI errors remain.
+If any mandatory condition fails:
+Status = NOT COMPLETE.
+Do not call Phase 0.1.5 complete just because the workflow YAML was created.
+13. PHASE 1 READINESS BOUNDARY
+Phase 1 is:
+REAL WINDOWS SCREEN CAPTURE ENGINE
+It will involve:
+Windows.Graphics.Capture.
+GraphicsCaptureItem.
+Direct3D11 device integration.
+Direct3D11CaptureFramePool.
+FrameArrived.
+Real captured frame delivery.
+Frame pool resize and recreation.
+Cancellation.
+Resource lifecycle.
+Real Windows hardware validation.
+However:
+DO NOT IMPLEMENT THESE FEATURES IN THIS TASK.
+Do not modify Direct3D capture functionality.
+Do not implement camera capture.
+Do not implement WASAPI capture.
+Do not implement Media Foundation encoding.
+Only close Phase 0.1.5.
+14. FINAL REPORT
+When finished, provide a factual engineering report containing:
+A. Initial Audit
+What was already correct and what was broken.
+B. Implemented Changes
+Exact files created or modified.
+C. Git Information
+Working branch.
+Commit SHA.
+Commit URL.
+Pull request URL, if created.
+D. Windows CI Results
+Stage	Result
+SDK setup	
+NuGet restore	
+Debug x64 build	
+Automated tests	
+Release x64 build	
+TRX generation	
+Artifact upload	
+E. Evidence
+Provide:
+GitHub Actions workflow URL.
+Exact workflow run URL.
+Test artifact location.
+Commit URL.
+F. Remaining Problems
+List every unresolved blocker.
+G. Final Decision
+Choose exactly one:
+PHASE 0.1.5 COMPLETE — READY FOR PHASE 1
+PHASE 0.1.5 BLOCKED — NOT READY FOR PHASE 1
+PHASE 0.1.5 PARTIALLY COMPLETE — VERIFICATION REQUIRED
+Explain the decision with evidence.
+15. FINAL ENGINEERING DIRECTIVE
+The priority is engineering correctness, not making the report look successful.
+A documented workflow is not a verified workflow.
+A successful local build is not proof of successful Windows CI.
+A successful CI run is not proof that screen recording works.
+Do not hide blockers.
+Do not invent evidence.
+Do not claim implementation of unimplemented functionality.
+Complete Phase 0.1.5 with verifiable results, then stop and wait for approval before beginning Phase 1.
+END OF MASTER PROMPT.
