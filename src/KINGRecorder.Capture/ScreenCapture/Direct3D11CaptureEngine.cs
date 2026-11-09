@@ -455,9 +455,9 @@ public sealed class Direct3D11CaptureEngine : IScreenCaptureService, IAsyncDispo
         [FieldOffset(100)]
         public short dmCollate;
 
-        [FieldOffset(102)]
-        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
-        public string dmFormName;
+        // DEVMODEW holds dmFormName (WCHAR[32]) at 102..166. It is deliberately not projected: a reference
+        // field at that unaligned explicit offset makes the CLR reject the whole type with TypeLoadException,
+        // and display enumeration only needs dmFields and dmDisplayFrequency.
 
         [FieldOffset(166)]
         public ushort dmLogPixels;

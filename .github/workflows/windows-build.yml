@@ -52,8 +52,7 @@ jobs:
         run: >
           dotnet test KINGRecorder.sln
           -c Debug --no-build -p:Platform=x64
-          --results-directory TestResults
-          --logger "trx;LogFileName=test_results.trx"
+          --logger trx
 
       - name: Stage E - Build Release x64
         shell: pwsh
@@ -64,7 +63,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: trx-test-results
-          path: TestResults/**/*.trx
+          path: '**/TestResults/**/*.trx'
           if-no-files-found: warn
           retention-days: 14
 
