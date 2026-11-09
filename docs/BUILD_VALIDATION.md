@@ -1,6 +1,6 @@
 # KING RECORDER — Build & Validation Guide
 
-**Last updated:** Phase 0.2 (2026-11-09)
+**Last updated:** Phase 0.2.1 (2026-11-09)
 
 ---
 
@@ -42,7 +42,7 @@ Notes:
 - `-p:Platform=x64` is required. Passing no platform lets MSBuild default to `AnyCPU`, which is not a declared
   solution configuration.
 - Each test project writes its own TRX under `tests/<project>/TestResults/` (git-ignored). Do not force one
-  shared file name: `--logger "trx;LogFileName=..."` makes the four projects overwrite each other's results.
+  shared file name: `--logger "trx;LogFileName=..."` makes the five projects overwrite each other's results.
 - `TreatWarningsAsErrors=true` is inherited from `Directory.Build.props`; warnings fail the build by design.
 
 ---
@@ -54,8 +54,8 @@ Notes:
 | Property | Value |
 |---|---|
 | Workflow | `Windows Build & Test` (`.github/workflows/windows-build.yml`) |
-| Run | [42662083139](https://github.com/MOT1209/KING-Rtest/actions/runs/42662083139) — conclusion `success` |
-| Branch / commit | `phase-0.2-foundation-repair` @ `0c40e28bc242` |
+| Run | [42677180920](https://github.com/MOT1209/KING-Rtest/actions/runs/42677180920) — conclusion `success` |
+| Branch / commit | `phase-0.2.1-lifecycle-hardening` @ `9542c1b9a091` |
 | Runner | `windows-latest` (Windows Server 2025, image `windows-2025-vs2026`) |
 | SDK | installed from `global.json` (10.0.100, roll-forward to the newest 10.0.x) |
 
@@ -63,17 +63,21 @@ Notes:
 |---|---|
 | Restore | **Passed** |
 | Debug x64 build | **Passed** |
-| Automated tests | **Passed — 116 passed, 0 failed, 0 skipped** |
+| Automated tests | **Passed — 138 passed, 0 failed, 0 skipped** |
 | Release x64 build | **Passed** |
-| TRX artifacts | **Uploaded** — one file per test project |
+| TRX artifacts | **Uploaded** — one file per test project (5 files, all present) |
 | Release artifact | **Uploaded** — `kingrecorder-release-x64` |
 
 | Test project | Passed | Failed | Skipped |
 |---|---|---|---|
 | `KINGRecorder.Core.Tests` | 59 | 0 | 0 |
-| `KINGRecorder.Recording.Tests` | 29 | 0 | 0 |
+| `KINGRecorder.Recording.Tests` | 42 | 0 | 0 |
 | `KINGRecorder.Capture.Tests` | 22 | 0 | 0 |
 | `KINGRecorder.Infrastructure.Tests` | 6 | 0 | 0 |
+| `KINGRecorder.Presentation.Tests` | 9 | 0 | 0 |
+
+Previous verified baseline: run [42662083139](https://github.com/MOT1209/KING-Rtest/actions/runs/42662083139)
+@ `0c40e28bc242` with 116 tests, before the Phase 0.2.1 lifecycle work.
 
 ### 3.2 Local workstation — no SDK
 
@@ -102,6 +106,8 @@ None of these could have been discovered without executing the pipeline, which i
 | `CS0169`/`CS0414`/`CS0649` | Unused capture item, size and frame counters; a null event assignment | Dead state removed; contract events keep a documented `CS0067` pragma |
 | Duplicate `Program` / `Main` | WinUI generated an entry point beside `Program.cs` | `<DefineConstants>...;DISABLE_XAML_GENERATED_MAIN</DefineConstants>` |
 | `TypeLoadException` on `DEVMODE` | `dmFormName` was a `string` at explicit offset 102 | The unread field is no longer projected; every other offset and the 220-byte size are unchanged |
+| No run started for a newly pushed branch | `on.push.branches` listed one literal phase branch | Trigger widened to `phase-*` so any phase branch is validated |
+| `CS0718: 'Program': static types cannot be used as type arguments` | `ILogger<Program>` where `Program` is a `static class` | Log through `ILoggerFactory.CreateLogger("KINGRecorder.App.Program")` |
 
 ---
 
@@ -114,7 +120,7 @@ The single workflow is **`.github/workflows/windows-build.yml`** (the previous f
 |---|---|
 | Name | `Windows Build & Test` |
 | Runner | `windows-latest` |
-| Triggers | `push` to `main`, `phase-0.2-foundation-repair`, `repair/**`; `pull_request` to `main`; `workflow_dispatch` |
+| Triggers | `push` to `main`, `phase-*`, `repair/**`; `pull_request` to `main`; `workflow_dispatch` |
 | Permissions | `contents: read` only |
 | Concurrency | one run per ref, `cancel-in-progress: true` |
 | Timeout | 60 minutes |
@@ -129,18 +135,19 @@ The workflow is not configured with `continue-on-error` or `|| true`: any restor
 job.
 
 **Workflow run status: VERIFIED.** Run
-[42662083139](https://github.com/MOT1209/KING-Rtest/actions/runs/42662083139) completed with conclusion `success` on
-commit `0c40e28bc242`, including the Release x64 build. Earlier runs of the same workflow failed and drove the fixes
-listed in §3.3.
+[42677180920](https://github.com/MOT1209/KING-Rtest/actions/runs/42677180920) completed with conclusion `success` on
+commit `9542c1b9a091`, including the Release x64 build. The earlier Phase 0.2 run
+([42662083139](https://github.com/MOT1209/KING-Rtest/actions/runs/42662083139), `0c40e28bc242`) is also green, and
+failing runs of the same workflow drove the fixes listed in §3.3.
 
 ---
 
 ## 5. Keeping the run verified
 
-1. Every push to `main`, `phase-0.2-foundation-repair` or `repair/**`, and every pull request to `main`, runs the
-   workflow. A red run is a real failure: fix the cause, never add `continue-on-error`, `|| true`, or a suppression
-   that hides it.
-2. Download `trx-test-results` after each run and confirm all four TRX files are present; a missing file means one
+1. Every push to `main`, `phase-*` or `repair/**`, and every pull request to `main`, runs the workflow. A red run is
+   a real failure: fix the cause, never add `continue-on-error`, `|| true`, or a suppression that hides it. If a
+   pushed branch produces **no** run, check `on.push.branches` before assuming the pipeline passed.
+2. Download `trx-test-results` after each run and confirm all five TRX files are present; a missing file means one
    project did not execute.
 3. Record the run URL and commit SHA here (and in `docs/PHASE_0_2_IMPLEMENTATION_REPORT.md` §C) whenever the
    baseline commit changes, so no document claims a green state for a commit that was never built.
@@ -157,6 +164,8 @@ listed in §3.3.
 | `MSB4126` invalid solution configuration | `Platform` not passed | Stage C command line |
 | XAML compiler / WinUI errors | WindowsAppSDK tooling missing for the target framework | Stage C log; `Microsoft.WindowsAppSDK` version in `Directory.Packages.props` |
 | `NU1510` at restore | a package is already part of the .NET 10 shared framework | Stage B log; remove the explicit `PackageReference` instead of disabling the warning |
+| No workflow run at all after a push | the branch does not match `on.push.branches` | workflow trigger list; `gh run list -b <branch>` returns nothing |
+| `CS0718` "static types cannot be used as type arguments" | `ILogger<T>` where `T` is a `static class` | Stage C log; use `ILoggerFactory.CreateLogger("name")` for non-instantiable types |
 | Duplicate `Program`/`Main` | WinUI generated an entry point beside a hand-written one | Stage C log; define `DISABLE_XAML_GENERATED_MAIN` |
 | `TypeLoadException` at test time | a reference-type field on an unaligned explicit struct offset | Stage D log; project only the fields that are read |
 | CS0067 `event is never used` | warnings-as-errors with an event no implementation raises yet | Stage C log; both current cases carry a documented pragma until Phase 1/3 raise them |
