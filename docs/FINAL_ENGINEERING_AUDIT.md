@@ -49,3 +49,18 @@ GitHub security policy strictly enforces that Personal Access Tokens (PATs) cann
 ## 4. Phase 1 Readiness Decision
 **STATUS: PHASE 0.1.5 BLOCKED — NOT READY FOR PHASE 1**  
 The native solution foundation and code quality are completely stabilized, but automated cloud Windows CI verification is blocked until the workflow file can be pushed with the required `workflow` scope.
+
+---
+
+## 5. Phase 0.2 correction (2026-11-09)
+
+This report is retained for history, but two of its statements must be corrected:
+
+1. The workflow was **not** present at `.github/workflows/windows-build.yml`. The repository contained
+   `.github/workflows/woindos-build-yml`, a prompt document with no YAML extension, which GitHub Actions ignores.
+   That file has since been replaced by a real `windows-build.yml`.
+2. Consequently CI status is **NOT VERIFIED** (never executed), not merely blocked by token scope.
+
+Prior preparation work that this report marks VERIFIED (interop layouts, DPI, settings persistence, project
+configuration) was re-verified by inspection during the Phase 0.2 audit. See `docs/PHASE_0_2_AUDIT.md` and
+`docs/PHASE_0_2_IMPLEMENTATION_REPORT.md`; Phase 0.2 readiness is **PARTIALLY READY**, pending a green Windows CI run.

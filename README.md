@@ -1,118 +1,122 @@
 # KING RECORDER — Professional Native Windows Screen Recording Studio
 
-**Version:** 1.0.0 MVP  
-**Target Platform:** Windows 10 (Build 19041+) / Windows 11  
-**Architecture:** Native Windows Desktop (WinUI 3 + Windows App SDK 1.5 + .NET 10 LTS)  
-**Design Identity:** Premium KING Design System (Charcoal Black, Gold, Recording Red)  
-**Localization:** Full Arabic (RTL) & English (LTR) Support
+**Version:** 1.0.0 MVP
+**Target Platform:** Windows 10 (Build 19041+) / Windows 11, x64
+**Architecture:** Native Windows Desktop (WinUI 3 + Windows App SDK 1.5 + .NET 10)
+**Design Identity:** Premium KING (charcoal black, gold, recording red)
+**Engineering phase:** 0.2 — Foundation Repair & Stabilization (in progress: verification pending)
+
+> **Honest status:** the native application shell, native device enumeration and the recording **session state
+> machine** exist. Screen capture, webcam capture, audio capture, video composition and MP4 encoding **do not exist
+> yet** and throw `NotSupportedException` rather than producing fake recordings. No successful Windows CI run has
+> been observed for this phase.
 
 ---
 
-## 1. Project Overview
+## 1. What exists today
 
-**KING RECORDER** is an enterprise-grade, high-performance native Windows desktop screen recording application. Built with WinUI 3, C#, .NET 10 LTS, Direct3D 11, and WASAPI, it delivers zero-lag screen, webcam, and system audio recording.
+| Capability | Status |
+|---|---|
+| Solution & projects (10 projects, .NET 10 LTS, x64, central package management) | Verified by inspection |
+| Win32 display enumeration (monitors, refresh rate, per-monitor DPI) | Implemented, unit tested |
+| Win32 window enumeration (visible/titled/non-cloaked, process name, minimized) | Implemented, unit tested |
+| Settings persistence (atomic JSON, validated volumes, `MyVideos` default) | Implemented, unit tested |
+| Recording lifecycle state machine (validated transitions, recovery, cancellation, serialized Start/Stop) | Implemented in Phase 0.2; tests authored, **not yet executed** |
+| Dependency injection composition (per-layer registrations, provider validation, deterministic shutdown) | Implemented in Phase 0.2; layer registrations unit tested (authored) |
+| Pause / resume | **Not supported** — no pipeline exists to suspend; engine reports this explicitly |
+| Windows Graphics Capture (`GraphicsCaptureItem`, `Direct3D11CaptureFramePool`) | **Not implemented** (Phase 1) |
+| Webcam capture and GPU overlay compositor | **Not implemented** (Phase 2) |
+| WASAPI system/microphone capture and mixing | **Not implemented** (Phase 3) |
+| H.264/AAC/MP4 encoding (Media Foundation) | **Not implemented** (Phase 4) |
+| Recording dashboard, library, hotkeys, native RTL localization | **Not implemented** (Phase 5) |
 
-### Key Architectural Standards
-- **Framework & Runtime**: Target framework `.NET 10 LTS` (`net10.0-windows10.0.19041.0`) with `<TreatWarningsAsErrors>true</TreatWarningsAsErrors>`.
-- **SDK & Dependencies**: Pinned via `global.json` and managed centrally using `Directory.Packages.props`.
-- **Native Win32 Interop**: Strict P/Invoke definitions for `MONITORINFOEX` (104 bytes), `DEVMODE` (220 bytes with explicit field offsets), `DwmGetWindowAttribute` (4-byte BOOL cloaked window check), and dynamic monitor DPI queries (`GetDpiForMonitor` / `GetDpiForSystem`).
-- **Dynamic File Management**: Output directory dynamically uses `Environment.SpecialFolder.MyVideos` without hardcoded user paths.
-- **Truthful Hardware Reporting**: Explicit state reporting; un-implemented pipelines throw `NotSupportedException` while maintaining `IsCapturing = false`. Zero fake files or simulated hardware meters.
+### Engineering standards
 
-### Implementation Status Matrix
-- **Implemented & Verified in Phase 0.1.4**:
-  - Native Windows application solution foundation (10 projects, .NET 10 LTS, x64).
-  - Win32 Display & Monitor Enumeration (`EnumDisplayMonitors`, `MONITORINFOEX`, `DEVMODE` refresh rate, `GetDpiForMonitor`).
-  - Win32 Window Enumeration (`EnumWindows`, title, process name, iconic minimized check, `DWMWA_CLOAKED`).
-  - Atomic Settings persistence & validation (`SettingsManager` with dynamic `MyVideos` folder).
-  - MVVM Presentation architecture & clean unsubscription lifecycle (`MainViewModel`).
-  - xUnit production-backed unit tests (layout offsets, DPI math, state transitions, lifecycle disposal).
-- **Scheduled for Subsequent Implementation Phases**:
-  - **Phase 1**: Real `Windows.Graphics.Capture` item creation, `Direct3D11CaptureFramePool`, and swapchain texture rendering.
-  - **Phase 2**: Webcam device capture & GPU alpha mask composition (circle / rounded rectangle).
-  - **Phase 3**: WASAPI system audio loopback & microphone capture with 48kHz audio limiter.
-  - **Phase 4**: Windows Media Foundation hardware-accelerated H.264/AAC MP4 multiplexing (`IMFSinkWriter`).
-  - **Phase 5**: Complete recording dashboard & library management.
+- `.NET 10` (`net10.0-windows10.0.19041.0`) with `<TreatWarningsAsErrors>true</TreatWarningsAsErrors>`.
+- SDK pinned in `global.json`; package versions centralized in `Directory.Packages.props`.
+- Strict P/Invoke layout: `MONITORINFOEX` 104 B, `DEVMODE` 220 B, `RECT` 16 B, 4-byte `BOOL` for `DWMWA_CLOAKED`.
+- Explicit unavailable implementations; no fabricated output files, meters or success reports.
+- Single resource ownership: the DI container disposes services, `RecordingEngine` disposes only its own state.
 
 ---
 
-## 2. Solution Structure
+## 2. Solution structure
 
 ```text
-KING-Rtest/
-├── KINGRecorder.sln                     # Visual Studio Solution
-├── Directory.Build.props                # Global .NET 10 LTS & Compiler properties
-├── Directory.Packages.props             # Central Package Version Management
-├── global.json                          # SDK Pinning (.NET 10)
-│
+KINGRecorder.sln
+├── Directory.Build.props            # Shared .NET 10 / warnings-as-errors properties
+├── Directory.Packages.props         # Central package versions
+├── global.json                      # SDK 10.0.100 (rollForward: latestMinor)
 ├── src/
-│   ├── KINGRecorder.App/                # WinUI 3 Application Views & ViewModels
-│   ├── KINGRecorder.Core/               # Domain Models, Interfaces & Contracts
-│   ├── KINGRecorder.Capture/            # Screen Capture & Direct3D 11 Interop
-│   ├── KINGRecorder.Audio/              # WASAPI System Loopback & Microphone
-│   ├── KINGRecorder.Recording/          # Recording Engine & Media Pipeline
-│   └── KINGRecorder.Infrastructure/     # Atomic Settings Persistence & Storage
-│
+│   ├── KINGRecorder.App/            # WinUI 3 shell, MVVM, composition root
+│   ├── KINGRecorder.Core/           # Models, enums, interfaces, exceptions, state table
+│   ├── KINGRecorder.Capture/        # Win32 enumeration today; Windows.Graphics.Capture in Phase 1
+│   ├── KINGRecorder.Audio/          # Device enumeration today; WASAPI in Phase 3
+│   ├── KINGRecorder.Recording/      # Session lifecycle engine; explicit unavailable stubs
+│   └── KINGRecorder.Infrastructure/ # Settings persistence
 ├── tests/
-│   ├── KINGRecorder.Core.Tests/         # State machine & domain tests
-│   ├── KINGRecorder.Capture.Tests/      # Native layout, DPI scaling & bounds tests
-│   ├── KINGRecorder.Recording.Tests/    # Audio limiter & engine lifecycle tests
-│   └── KINGRecorder.Infrastructure.Tests/ # Settings persistence & MyVideos tests
-│
+│   ├── KINGRecorder.Core.Tests/            # State machine
+│   ├── KINGRecorder.Capture.Tests/         # Interop layout, DPI, cancellation, DI
+│   ├── KINGRecorder.Recording.Tests/       # Engine lifecycle, DI
+│   └── KINGRecorder.Infrastructure.Tests/  # Settings persistence, DI
 ├── docs/
-│   ├── FINAL_ENGINEERING_AUDIT.md       # Comprehensive final engineering audit
-│   ├── PHASE_0_1_3_REPORT.md            # Phase 0.1.3 Interop & CI Report
-│   ├── REPAIR_AUDIT.md                  # Evidence-based capability audit
-│   ├── MIGRATION_PLAN.md                # Multi-phase engineering roadmap
-│   ├── ARCHITECTURE.md                  # Detailed architectural specification
-│   ├── DEPENDENCIES.md                  # Evaluated packages & licensing
-│   └── BUILD_VALIDATION.md              # Build & test verification guide
-│
-└── prototype/                           # Interactive React 19 / TypeScript prototype
+│   ├── PHASE_0_2_AUDIT.md                  # Phase 0.2 audit (current)
+│   ├── PHASE_0_2_IMPLEMENTATION_REPORT.md  # Phase 0.2 changes, evidence, readiness
+│   ├── ARCHITECTURE.md                     # Implemented vs target architecture
+│   ├── BUILD_VALIDATION.md                 # Build, test and CI instructions
+│   ├── DEPENDENCIES.md
+│   ├── MIGRATION_PLAN.md
+│   ├── FINAL_ENGINEERING_AUDIT.md          # Earlier audit (see its Phase 0.2 correction note)
+│   └── PHASE_0_1*_REPORT.md
+├── .github/workflows/windows-build.yml     # Windows CI (authored, not yet run)
+└── prototype/                              # Preserved React prototype (not part of the product build)
 ```
 
 ---
 
-## 3. Building & Testing
+## 3. Building and testing
 
 ### Prerequisites
-- Windows 10 (Build 19041+) or Windows 11.
-- **Visual Studio** (17.10+) or **.NET 10 SDK** (`10.0.100`).
-- *Windows App SDK C# Templates*.
 
-### Command Line Verification Commands
+- Windows 10 build 19041+ or Windows 11 (x64).
+- .NET SDK `10.0.100` (as pinned by `global.json`) or newer `10.0.x` minor.
+- Optional: Visual Studio 2022 17.10+ with Windows App SDK C# templates.
 
 ```powershell
-# Check .NET SDK environment
 dotnet --info
-dotnet --list-sdks
-
-# Restore NuGet dependencies
 dotnet restore KINGRecorder.sln
-
-# Build Solution in Debug x64 Configuration
 dotnet build KINGRecorder.sln -c Debug -p:Platform=x64
-
-# Run Automated Unit Test Suite
-dotnet test KINGRecorder.sln -c Debug -p:Platform=x64 --logger "trx;LogFileName=test_results.trx"
-
-# Build Solution in Release x64 Configuration
+dotnet test  KINGRecorder.sln -c Debug --no-build -p:Platform=x64 `
+  --results-directory TestResults --logger "trx;LogFileName=test_results.trx"
 dotnet build KINGRecorder.sln -c Release -p:Platform=x64
 ```
 
+### Validation status
+
+The environment that produced Phase 0.2 had no .NET SDK; every `dotnet` command exited `127`. **No build or test
+result is claimed.** Details and the exact commands are in
+[docs/BUILD_VALIDATION.md](docs/BUILD_VALIDATION.md) and
+[docs/PHASE_0_2_IMPLEMENTATION_REPORT.md](docs/PHASE_0_2_IMPLEMENTATION_REPORT.md).
+
+### CI
+
+`.github/workflows/windows-build.yml` runs on `windows-latest` with `contents: read`, installs the SDK from
+`global.json`, restores, builds Debug x64, runs tests with TRX output, builds Release x64 and uploads artifacts.
+**It has not been executed yet**, so CI is unverified.
+
 ---
 
-## 4. Documentation Index
+## 4. Documentation index
 
-- [Final Engineering Audit](docs/FINAL_ENGINEERING_AUDIT.md): Final engineering audit & verification report.
-- [Phase 0.1.3 Interop Report](docs/PHASE_0_1_3_REPORT.md): Native Win32 interop layout & DPI audit.
-- [Build Validation Guide](docs/BUILD_VALIDATION.md): Environment requirements & build execution steps.
-- [Dependencies Guide](docs/DEPENDENCIES.md): Package evaluation matrix & justification.
-- [Architecture Guide](docs/ARCHITECTURE.md): Class responsibilities, GPU compositor & WASAPI pipelines.
-- [Migration Roadmap](docs/MIGRATION_PLAN.md): Multi-phase native development roadmap.
+- [Phase 0.2 Audit](docs/PHASE_0_2_AUDIT.md) — what is implemented, partial, missing, or broken.
+- [Phase 0.2 Implementation Report](docs/PHASE_0_2_IMPLEMENTATION_REPORT.md) — changes, validation evidence, readiness.
+- [Architecture](docs/ARCHITECTURE.md) — layers, DI lifetimes, ownership rules, state machine, target pipelines.
+- [Build Validation](docs/BUILD_VALIDATION.md) — commands, environment requirements, CI stages, failure triage.
+- [Dependencies](docs/DEPENDENCIES.md) — package evaluation.
+- [Migration Plan](docs/MIGRATION_PLAN.md) — phased roadmap.
 
 ---
 
 ## 5. License
 
-This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
+MIT — see [LICENSE](LICENSE).
