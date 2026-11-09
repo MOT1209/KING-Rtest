@@ -356,7 +356,7 @@ public sealed class RecordingEngineLifecycleTests : IDisposable
         await Assert.ThrowsAsync<ObjectDisposedException>(() => engine.StopRecordingAsync());
         await Assert.ThrowsAsync<ObjectDisposedException>(() => engine.CancelRecordingAsync());
         await Assert.ThrowsAsync<ObjectDisposedException>(() => engine.CaptureScreenshotAsync(CreateOptions()));
-        Assert.Throws<ObjectDisposedException>(() => engine.PauseRecordingAsync());
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => engine.PauseRecordingAsync());
     }
 
     [Fact]
