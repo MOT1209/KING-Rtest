@@ -18,7 +18,7 @@
         <Border Grid.Row="0" x:Name="AppTitleBar" Height="48" Background="{StaticResource KingCharcoal}">
             <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0">
                 <TextBlock Text="👑 KING RECORDER" Foreground="{StaticResource KingGold}" FontWeight="Bold" FontSize="14" VerticalAlignment="Center"/>
-                <TextBlock Text="1.0 MVP (Phase 0.1.1 Stabilized Foundation)" Margin="12,0,0,0" Foreground="#888888" FontSize="11" VerticalAlignment="Center"/>
+                <TextBlock Text="1.0 MVP (Phase 0.1.4 Stabilized Foundation)" Margin="12,0,0,0" Foreground="#888888" FontSize="11" VerticalAlignment="Center"/>
             </StackPanel>
         </Border>
 

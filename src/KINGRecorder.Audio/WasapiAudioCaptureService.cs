@@ -78,9 +78,28 @@ public sealed class WasapiAudioCaptureService : IAudioCaptureService
         return Task.CompletedTask;
     }
 
+    private bool _disposed;
+
     public void Dispose()
     {
-        StopAsync().GetAwaiter().GetResult();
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+        IsCapturing = false;
+
+        try
+        {
+            _systemLoopback?.StopRecording();
+            _micCapture?.StopRecording();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error while stopping WASAPI capture clients during disposal.");
+        }
+
         _systemLoopback?.Dispose();
         _micCapture?.Dispose();
         _systemLoopback = null;
