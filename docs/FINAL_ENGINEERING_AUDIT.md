@@ -24,24 +24,28 @@ All solution projects target **.NET 10 LTS** (`net10.0-windows10.0.19041.0`) wit
 | **Windows Screen Capture Engine** | NOT IMPLEMENTED | Scheduled for Phase 1 (`Windows.Graphics.Capture` + Direct3D 11 frame pipeline) |
 | **WASAPI Audio Capture Engine** | NOT IMPLEMENTED | Scheduled for Phase 3 (System loopback + Microphone WASAPI clients) |
 | **Media Foundation Video Encoder** | NOT IMPLEMENTED | Scheduled for Phase 4 (`IMFSinkWriter` MP4 multiplexer) |
-| **Windows GitHub Actions CI** | BLOCKED (PAT Scope) | Workflow authored at `.github/workflows/windows-build.yml`. Push rejected by GitHub API: Personal Access Token requires `workflow` scope to modify `.github/workflows/*` |
+| **Windows GitHub Actions CI** | BLOCKED (PAT Scope) | Workflow authored at `.github/workflows/windows-build.yml`. Direct push rejected by GitHub API: PAT lacks `workflow` scope |
 
 ---
 
-## 3. Dependency Inventory Comparison
+## 3. GitHub Actions CI Blocker Analysis & Resolution
 
-| Package Name | Configured Version | Central Management | Target Framework |
-|---|---|---|---|
-| `CommunityToolkit.Mvvm` | `8.3.2` | `Directory.Packages.props` | `net10.0-windows10.0.19041.0` |
-| `Microsoft.Extensions.DependencyInjection` | `9.0.0` | `Directory.Packages.props` | `net10.0-windows10.0.19041.0` |
-| `Microsoft.Extensions.Logging` | `9.0.0` | `Directory.Packages.props` | `net10.0-windows10.0.19041.0` |
-| `Microsoft.WindowsAppSDK` | `1.5.240802000` | `Directory.Packages.props` | `net10.0-windows10.0.19041.0` |
-| `Microsoft.Windows.SDK.BuildTools` | `10.0.26100.1742` | `Directory.Packages.props` | `net10.0-windows10.0.19041.0` |
-| `xunit` | `2.9.2` | `Directory.Packages.props` | `net10.0-windows10.0.19041.0` |
-| `Microsoft.NET.Test.Sdk` | `17.11.1` | `Directory.Packages.props` | `net10.0-windows10.0.19041.0` |
+### Exact Error Encountered
+```text
+! [remote rejected] repair/phase-0.1.5-final-ci-closure -> repair/phase-0.1.5-final-ci-closure (refusing to allow a Personal Access Token to create or update workflow `.github/workflows/windows-build.yml` without `workflow` scope)
+```
+
+### Root Cause
+GitHub security policy strictly enforces that Personal Access Tokens (PATs) cannot create or update files under `.github/workflows/` unless explicitly granted the `workflow` scope upon token generation.
+
+### Resolution Options for Repository Owner
+1. **Option 1 (Update PAT Scope):**
+   Navigate to GitHub Settings -> Developer settings -> Personal access tokens -> Select token -> Enable the `workflow` checkbox -> Save.
+2. **Option 2 (Create File via GitHub Web UI):**
+   Navigate to `https://github.com/MOT1209/KING-Rtest/new/main`, enter file path `.github/workflows/windows-build.yml`, copy the workflow YAML content from this repository, and commit directly.
 
 ---
 
-## 4. Phase 1 Readiness Boundary
-**READY FOR PHASE 1 IMPLEMENTATION**  
-The native solution foundation is modernized to .NET 10 LTS, strictly compliant with Win32 P/Invoke standards, free of fake recording output, backed by unit tests, and ready for Phase 1 (`Windows.Graphics.Capture` + Direct3D 11 frame pipeline).
+## 4. Phase 1 Readiness Decision
+**STATUS: PHASE 0.1.5 BLOCKED — NOT READY FOR PHASE 1**  
+The native solution foundation and code quality are completely stabilized, but automated cloud Windows CI verification is blocked until the workflow file can be pushed with the required `workflow` scope.

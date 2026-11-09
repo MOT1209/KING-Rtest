@@ -25,7 +25,7 @@
 
 ## 3. Command Line Build & Test Instructions
 
-Execute in PowerShell or Developer Command Prompt at the repository root:
+Execute in PowerShell or Developer Command Prompt at the repository root on Windows:
 
 ```powershell
 # 1. Print environment & SDK information (Stage A)
@@ -47,7 +47,20 @@ dotnet build KINGRecorder.sln -c Release --no-restore -p:Platform=x64
 
 ---
 
-## 4. Automated Windows CI / CD
+## 4. Automated Windows CI / CD Pipeline
 
-Automated verification runs on GitHub Actions (`.github/workflows/windows-build.yml`), executing NuGet restore, Debug compilation, xUnit test execution, and Release packaging on `windows-latest` runners with .NET 10 SDK.
-Triggers: `push` to `main` and `repair/*`, `pull_request` to `main`, and manual `workflow_dispatch`.
+The automated verification workflow is defined in `.github/workflows/windows-build.yml`:
+- **Runner**: `windows-latest`
+- **Triggers**:
+  - Push to `main` and `repair/**`
+  - Pull request targeting `main`
+  - Manual `workflow_dispatch`
+- **Minimal Permissions**: `contents: read`
+- **Stages**:
+  - Stage A: Environment & SDK Information (`dotnet --info`)
+  - Stage B: NuGet Restore (`dotnet restore KINGRecorder.sln`)
+  - Stage C: Debug x64 Build (`dotnet build KINGRecorder.sln -c Debug -p:Platform=x64`)
+  - Stage D: Automated Tests (`dotnet test ... --logger "trx;LogFileName=test_results.trx"`) and TRX Artifact Upload
+  - Stage E: Release x64 Build (`dotnet build KINGRecorder.sln -c Release -p:Platform=x64`)
+  - Stage F: Release Binary Artifact Upload (`actions/upload-artifact@v4`)
+- **Repository Permission Requirement**: Pushing workflow modifications to GitHub requires a Personal Access Token with the `workflow` scope enabled.
