@@ -204,14 +204,17 @@ Environment: `MINGW64_NT-10.0-26200` (Windows 11 build 26200) with Git Bash; Pyt
 
 ## 11. Unresolved risks recorded for the next phase
 
-1. **`CS0067` risk under `TreatWarningsAsErrors`:** `IScreenCaptureService.FrameArrived` and
-   `IAudioCaptureService.AudioDataAvailable` are declared and never raised in their implementing classes. If the
-   compiler reports CS0067 for them, the Debug build fails. This cannot be verified without an SDK and was not
-   silenced with a pragma. It resolves naturally in Phase 1/3 when frames/audio packets are actually produced.
-2. **WinUI 3 head build on CI is unproven:** WindowsAppSDK 1.5 tooling, XAML compiler and unpackaged
-   (`WindowsPackageType=None`) build have never been executed in this environment.
-3. **`dotnet test` against a WinUI 3 solution** may require `--no-build` (used in CI) and may still touch
-   WindowsAppSDK targets; unverified.
+1. **`CS0067` was real and is now documented:** `FrameArrived` and `AudioDataAvailable` are declared and never raised,
+   so warnings-as-errors did fail the build. Both now carry a one-line pragma that names the Phase 1/3 delivery which
+   will raise them; deleting the pragma is part of that work, not of this phase.
+2. **RESOLVED — WinUI 3 head build on CI:** the unpackaged (`WindowsPackageType=None`) XAML build now compiles and
+   links on `windows-latest` once the XAML-generated entry point is disabled
+   (`DISABLE_XAML_GENERATED_MAIN`); see `docs/BUILD_VALIDATION.md` §3.1.
+3. **RESOLVED — `dotnet test` against a WinUI 3 solution:** `--no-build` after the Debug x64 build works; all four
+   test projects run on the runner (116 passed). TRX files must be per project, not one shared file name.
+4. **RESOLVED — `DEVMODE` could not be loaded at all:** `dmFormName` as a `string` at explicit offset 102 threw
+   `TypeLoadException`, so display enumeration silently returned an empty list. The field is no longer projected; no
+   CI runner has a monitor topology that would let a test assert a non-empty list.
 4. **SharpDX 4.2.0** is maintenance-only; documented as a future migration to Vortice/CsWin32, not changed now.
 5. **Capture/audio projects reference SharpDX/NAudio but never use them at runtime yet** — dead weight until
    Phase 1/3.

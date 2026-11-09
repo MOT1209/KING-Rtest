@@ -178,7 +178,7 @@ as arithmetic inside a test — no production mixer exists.
 
 | Risk | Impact | Mitigation |
 |---|---|---|
-| `TreatWarningsAsErrors` + events never raised (`FrameArrived`, `AudioDataAvailable`) may raise CS0067 | Build failure | Resolve when Phase 1/3 raises the events; not suppressed |
+| `TreatWarningsAsErrors` + events never raised (`FrameArrived`, `AudioDataAvailable`) | CS0067 would fail the build | Both declarations carry a one-line `CS0067` pragma naming the Phase 1/3 delivery that will raise them; remove the pragma at that point |
 | `Recording` references `Capture`/`Audio` without using them | Coupling | Remove when the pipeline lands |
 | SharpDX 4.2.0 is maintenance-only | Long-term | Planned migration to Vortice.Windows/CsWin32, not part of Phase 0.2 |
 | No `<Platforms>`/`RuntimeIdentifier` declared | `AnyCPU` fallback surprises | Always pass `-p:Platform=x64`; revisit when packaging is designed |

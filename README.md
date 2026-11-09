@@ -4,12 +4,12 @@
 **Target Platform:** Windows 10 (Build 19041+) / Windows 11, x64
 **Architecture:** Native Windows Desktop (WinUI 3 + Windows App SDK 1.5 + .NET 10)
 **Design Identity:** Premium KING (charcoal black, gold, recording red)
-**Engineering phase:** 0.2 — Foundation Repair & Stabilization (in progress: verification pending)
+**Engineering phase:** 0.2 — Foundation Repair & Stabilization (**FOUNDATION READY**, Windows CI green)
 
 > **Honest status:** the native application shell, native device enumeration and the recording **session state
-> machine** exist. Screen capture, webcam capture, audio capture, video composition and MP4 encoding **do not exist
-> yet** and throw `NotSupportedException` rather than producing fake recordings. No successful Windows CI run has
-> been observed for this phase.
+> machine** exist, and 116 automated tests pass on Windows CI. Screen capture, webcam capture, audio capture, video
+> composition and MP4 encoding **do not exist yet** and throw `NotSupportedException` rather than producing fake
+> recordings.
 
 ---
 
@@ -21,8 +21,8 @@
 | Win32 display enumeration (monitors, refresh rate, per-monitor DPI) | Implemented, unit tested |
 | Win32 window enumeration (visible/titled/non-cloaked, process name, minimized) | Implemented, unit tested |
 | Settings persistence (atomic JSON, validated volumes, `MyVideos` default) | Implemented, unit tested |
-| Recording lifecycle state machine (validated transitions, recovery, cancellation, serialized Start/Stop) | Implemented in Phase 0.2; tests authored, **not yet executed** |
-| Dependency injection composition (per-layer registrations, provider validation, deterministic shutdown) | Implemented in Phase 0.2; layer registrations unit tested (authored) |
+| Recording lifecycle state machine (validated transitions, recovery, cancellation, serialized Start/Stop) | Implemented in Phase 0.2; verified by the Core and Recording test suites in CI |
+| Dependency injection composition (per-layer registrations, provider validation, deterministic shutdown) | Implemented in Phase 0.2; layer registrations unit tested in CI |
 | Pause / resume | **Not supported** — no pipeline exists to suspend; engine reports this explicitly |
 | Windows Graphics Capture (`GraphicsCaptureItem`, `Direct3D11CaptureFramePool`) | **Not implemented** (Phase 1) |
 | Webcam capture and GPU overlay compositor | **Not implemented** (Phase 2) |
@@ -68,7 +68,7 @@ KINGRecorder.sln
 │   ├── MIGRATION_PLAN.md
 │   ├── FINAL_ENGINEERING_AUDIT.md          # Earlier audit (see its Phase 0.2 correction note)
 │   └── PHASE_0_1*_REPORT.md
-├── .github/workflows/windows-build.yml     # Windows CI (authored, not yet run)
+├── .github/workflows/windows-build.yml     # Windows CI (green on phase-0.2-foundation-repair)
 └── prototype/                              # Preserved React prototype (not part of the product build)
 ```
 
@@ -86,23 +86,24 @@ KINGRecorder.sln
 dotnet --info
 dotnet restore KINGRecorder.sln
 dotnet build KINGRecorder.sln -c Debug -p:Platform=x64
-dotnet test  KINGRecorder.sln -c Debug --no-build -p:Platform=x64 `
-  --results-directory TestResults --logger "trx;LogFileName=test_results.trx"
+dotnet test  KINGRecorder.sln -c Debug --no-build -p:Platform=x64 --logger trx
 dotnet build KINGRecorder.sln -c Release -p:Platform=x64
 ```
 
 ### Validation status
 
-The environment that produced Phase 0.2 had no .NET SDK; every `dotnet` command exited `127`. **No build or test
-result is claimed.** Details and the exact commands are in
-[docs/BUILD_VALIDATION.md](docs/BUILD_VALIDATION.md) and
-[docs/PHASE_0_2_IMPLEMENTATION_REPORT.md](docs/PHASE_0_2_IMPLEMENTATION_REPORT.md).
+Windows CI is green on commit `0c40e28bc242`:
+[run 42662083139](https://github.com/MOT1209/KING-Rtest/actions/runs/42662083139) — restore, Debug x64 build,
+**116 passed / 0 failed / 0 skipped**, Release x64 build. The workstation that authored Phase 0.2 has no .NET SDK
+(every `dotnet` command exits `127`), so all numbers come from CI. Details:
+[docs/BUILD_VALIDATION.md](docs/BUILD_VALIDATION.md).
 
 ### CI
 
 `.github/workflows/windows-build.yml` runs on `windows-latest` with `contents: read`, installs the SDK from
-`global.json`, restores, builds Debug x64, runs tests with TRX output, builds Release x64 and uploads artifacts.
-**It has not been executed yet**, so CI is unverified.
+`global.json`, restores, builds Debug x64, runs the tests (one TRX per project), builds Release x64 and uploads both
+artifacts. It triggers on `main`, `phase-0.2-foundation-repair`, `repair/**`, and on pull requests to `main`;
+`workflow_dispatch` is enabled.
 
 ---
 

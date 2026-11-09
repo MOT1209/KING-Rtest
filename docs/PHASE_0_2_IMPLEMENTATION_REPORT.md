@@ -91,29 +91,57 @@ encoder/MP4 muxer, screenshots, library UI, hotkeys, localization in the native 
 | `docs/FINAL_ENGINEERING_AUDIT.md` | Added a Phase 0.2 correction note (workflow file was misnamed; CI unverified) | Stale CI claims |
 | `README.md` | Implementation matrix, validation status, docs index, workflow path | Stale status and structure claims |
 
+### Fixed while getting the first green CI run
+
+| File | Change | Failure it removed |
+|---|---|---|
+| `src/KINGRecorder.Infrastructure/KINGRecorder.Infrastructure.csproj`, `Directory.Packages.props` | Dropped the redundant `System.Text.Json` reference and its central version | `NU1510` at restore (warnings-as-errors) |
+| `src/KINGRecorder.Audio/WasapiAudioCaptureService.cs` | Microphones are flagged against `GetDefaultAudioEndpoint`; the `AudioDataAvailable` pragma is documented | `CS1061` (`MMDevice.Selected` does not exist) — the project had never compiled |
+| `src/KINGRecorder.Capture/ScreenCapture/Direct3D11CaptureEngine.cs` | Removed the unused capture item, size and frame counters; `DEVMODE.dmFormName` is no longer projected; `FrameArrived` pragma documented | `CS0169`/`CS0414`/`CS0649`, and a `TypeLoadException` that made `GetDisplaysAsync` silently return no displays |
+| `src/KINGRecorder.App/KINGRecorder.App.csproj` | `<DefineConstants>...;DISABLE_XAML_GENERATED_MAIN</DefineConstants>` | Duplicate `Program`/`Main` from the XAML-generated entry point |
+| `tests/KINGRecorder.Recording.Tests/Lifecycle/RecordingEngineLifecycleTests.cs` | `await Assert.ThrowsAsync<ObjectDisposedException>` | xUnit analyzer 2014 / obsolete `Assert.Throws(Func<Task>)` |
+| `tests/KINGRecorder.Capture.Tests/Interop/NativeStructLayoutTests.cs` | Asserts `dmCollate` at 100 and `dmLogPixels` at 166 around the 64-byte `dmFormName` region | Kept the layout test meaningful without the unloadable field |
+| `.github/workflows/windows-build.yml` | `--logger trx` instead of one shared `test_results.trx`; artifact glob `**/TestResults/**/*.trx` | Three of four test projects' results were overwritten by the last one |
+
 ---
 
 ## C. Validation evidence
 
+### C.1 Windows CI — executed and green
+
+| Property | Value |
+|---|---|
+| Workflow | `Windows Build & Test` (`.github/workflows/windows-build.yml`) |
+| Run | [42662083139](https://github.com/MOT1209/KING-Rtest/actions/runs/42662083139) — conclusion `success` |
+| Branch / commit | `phase-0.2-foundation-repair` @ `0c40e28bc242` |
+| Runner | `windows-latest`, Windows Server 2025, image `windows-2025-vs2026` |
+
+| Stage | Result |
+|---|---|
+| Restore | **Passed** |
+| Debug x64 build | **Passed** |
+| Automated tests | **Passed — 116 passed, 0 failed, 0 skipped** |
+| Release x64 build | **Passed** |
+| Artifacts | `trx-test-results` (4 files) and `kingrecorder-release-x64` uploaded |
+
+| Test project | Passed | Failed | Skipped |
+|---|---|---|---|
+| `KINGRecorder.Core.Tests` (state machine, transitions) | 59 | 0 | 0 |
+| `KINGRecorder.Recording.Tests` (engine lifecycle, DI) | 29 | 0 | 0 |
+| `KINGRecorder.Capture.Tests` (interop layout, DPI, cancellation, DI) | 22 | 0 | 0 |
+| `KINGRecorder.Infrastructure.Tests` (settings, DI) | 6 | 0 | 0 |
+
+Four earlier runs of the same workflow failed and each failure produced a real fix (see §B, "Fixed while getting the
+first green CI run"): `NU1510` at restore, `MMDevice.Selected` (the audio project had never compiled), unused
+capture state plus a never-raised event under warnings-as-errors, a duplicate XAML-generated `Main`, and a
+`TypeLoadException` on `DEVMODE` that silently broke display enumeration.
+
+### C.2 Authoring workstation — no SDK
+
 Environment: Windows 11 (build 26200), Git Bash (MINGW64). **No .NET SDK and no MSBuild installed** — verified at
 `/c/Program Files/dotnet`, `/c/Program Files (x86)/dotnet`, `%USERPROFILE%/.dotnet`, `/c/ProgramData/dotnet`, and on
-`PATH`.
-
-| # | Command | Exit code | Result |
-|---|---|---|---|
-| 1 | `dotnet --info` | **127** | `bash: dotnet: command not found` |
-| 2 | `dotnet restore KINGRecorder.sln` | **127** | `bash: dotnet: command not found` |
-| 3 | `dotnet build KINGRecorder.sln -c Debug -p:Platform=x64` | **127** | `bash: dotnet: command not found` |
-| 4 | `dotnet test KINGRecorder.sln -c Debug -p:Platform=x64` | **127** | `bash: dotnet: command not found` |
-| 5 | `dotnet build KINGRecorder.sln -c Release -p:Platform=x64` | **127** | `bash: dotnet: command not found` |
-
-**Test totals: none executed. Passed: 0. Failed: 0. Skipped: 0.** No pass/fail number is claimed, invented or
-inferred.
-
-Static test inventory authored in this phase (not executed): 4 test projects;
-`RecordingStateMachineTests` 18 valid-transition cases + 17 invalid cases ×2 theories + 7 facts;
-`RecordingEngineLifecycleTests` 22 facts; 3 DI registration tests in each of Recording/Capture/Infrastructure;
-plus the pre-existing Capture/Infrastructure tests.
+`PATH`. All five commands (`dotnet --info`, `restore`, Debug build, `test`, Release build) exited **127**
+(`bash: dotnet: command not found`). No local test counts exist; every number above comes from the CI run.
 
 Other checks actually performed:
 
@@ -124,52 +152,44 @@ Other checks actually performed:
 | Central package version present exactly once | `grep -c` | 1 in each of the four csproj files and in `Directory.Packages.props` |
 | No user changes overwritten in `src/`, `tests/`, `docs/` | `git status` before edits | confirmed none |
 
-### Git branch / commit evidence
+### C.3 Git branch / commit evidence
 
-**No commit SHA exists for this work.** The working directory is not a checkout of
-`https://github.com/MOT1209/KING-Rtest.git`; git resolves to `C:/Users/aihmo/alle folder von code`, whose remotes are
-`King2-MODLEN`, `mein-wep` and `king-colab-MCP`, and which tracks **zero** `KINGRecorder*` files. Committing here
-would have injected the entire KING RECORDER tree into an unrelated personal repository. A temporary branch
-`phase-0.2-foundation-repair` was created there to confirm this, then removed after restoring `main` (0 unique
-commits, nothing lost).
+Branch `phase-0.2-foundation-repair` on `https://github.com/MOT1209/KING-Rtest.git`, branched from
+`main` @ `a320059116d81bc8ac84c99ec425935fef4e0d93` ("merge: Phase 0.1.5 final foundation closure"). The workspace used
+for the edits is not itself a clone of that repository, so the change set was staged in a clean clone of `origin/main`
+and only the 34 intended paths were committed there; `main` was not modified and no force-push was used.
 
-To create the intended branch and commits in the real repository:
+| Commit | Subject |
+|---|---|
+| `2d52019` | fix(recording): validate the session state machine and serialize the recording lifecycle |
+| `5926b56` | ci(windows): replace the workflow stub with a real Windows build and test pipeline |
+| `dba416a` | fix(packages): drop the redundant System.Text.Json reference |
+| `09a746d` | fix(capture,audio): repair the MMDevice enumeration bug and drop dead capture state |
+| `5ae92de` | fix(app,test): stop the XAML generated Main from colliding with the composition root |
+| `0c40e28` | fix(capture): make DEVMODE loadable so display enumeration works |
 
-```powershell
-git clone https://github.com/MOT1209/KING-Rtest.git
-cd KING-Rtest
-git checkout -b phase-0.2-foundation-repair
-# copy the changed files from this workspace (paths unchanged)
-git add src tests docs .github .gitignore Directory.Packages.props README.md
-git commit -m "fix(recording): validate session state machine, serialize lifecycle and repair DI ownership"
-git add docs .github
-git commit -m "ci(windows): add real Windows build and test workflow"
-git log --oneline -2
-```
-
-### CI run URL
-
-**None.** The workflow has never executed; no run URL, run ID or artifact exists. CI must be treated as
-**unverified** until a green run is observed.
+`0c40e28bc242` is the commit the green run above was produced from.
 
 ---
 
 ## D. Remaining problems
 
-1. **No local build/test evidence.** The SDK is absent from this machine, so compilation, xUnit execution and the
-   WinUI 3 toolchain are unverified for every change listed above.
-2. **CI never executed.** No GitHub Actions run, no TRX artifacts, no green badge.
-3. **Possible `CS0067` build failure** under `TreatWarningsAsErrors`: `IScreenCaptureService.FrameArrived` and
-   `IAudioCaptureService.AudioDataAvailable` are never raised by their implementations. Not suppressed; expected to
-   resolve when Phase 1/3 raise them, but it may fail the first CI run.
-4. **`dotnet test` on a WinUI 3 solution** is unproven (XAML/WindowsAppSDK targets may interfere). CI uses
-   `--no-build` after the Debug build, which is the lowest-risk form but still unverified.
-5. **Composition root still inside `KINGRecorder.App/Program.cs`** (WinUI-dependent). Only the four per-layer
+1. **No local build/test evidence on the authoring machine.** The SDK is absent there, so every result in this report
+   comes from CI; a contributor without an SDK cannot reproduce them locally.
+2. **CS0067 is handled by a documented pragma, not by behaviour.** `FrameArrived` and `AudioDataAvailable` are still
+   never raised; the pragmas must be removed when Phase 1/3 deliver frames and audio.
+3. **`GetDisplaysAsync`/`GetOpenWindowsAsync` only swallow-and-log.** They return whatever Win32 enumeration produced,
+   but a marshalling failure now surfaces as one warning line rather than an exception; there is no test that asserts
+   a non-empty display list, because CI runners have no reliable monitor topology.
+4. **Composition root still inside `KINGRecorder.App/Program.cs`** (WinUI-dependent). Only the four per-layer
    registration extensions are covered by tests; the final `AddTransient<MainViewModel>()` wiring is verified by
-   inspection only.
-6. **`Recording` → `Capture`/`Audio` project references are unused**; kept to avoid churn.
-7. **`SharpDX.MediaFoundation` referenced but unused** (encoder stub); SharpDX is maintenance-only.
-8. **No `<Platforms>`/`RuntimeIdentifier>` metadata**; builds rely on `-p:Platform=x64`.
+   inspection and by `ValidateOnBuild` at startup, not by a test.
+5. **`Recording` → `Capture`/`Audio` project references are unused**; kept to avoid churn.
+6. **`SharpDX.MediaFoundation` referenced but unused** (encoder stub); SharpDX is maintenance-only.
+7. **No `<Platforms>`/`RuntimeIdentifier>` metadata**; builds rely on `-p:Platform=x64`. CI emits the RID-usage
+   notice for `Microsoft.WindowsAppSDK` on every restore; it is informational, not an error.
+8. **`actions/checkout`, `setup-dotnet` and `upload-artifact` @v4 emit a Node 20 deprecation notice** on the runner.
+   Harmless today; bump to the current major versions before Node 20 support is withdrawn.
 9. **Phase 1+ functionality still absent** (capture, audio, compositor, encoder) — by design, not as a defect.
 10. **`IWebcamService` remains unimplemented and unregistered**; documented, not silently faked.
 11. **UI buttons for Pause/Resume will surface a `NotSupportedException` message.** Intentional honesty; the real
@@ -179,19 +199,23 @@ git log --oneline -2
 
 ## E. Readiness assessment
 
-### **PARTIALLY READY** — some validation and fixes remain
+### **FOUNDATION READY**
 
-Rationale: the foundation-level code defects identified in the audit are repaired and the new logic is covered by
-deterministic tests, but **nothing has been compiled or executed** in this environment, the Windows CI workflow has
-never run, and the `CS0067`/WinUI build risks are unproven. `FOUNDATION READY` requires a green Windows CI run.
+Rationale: the foundation defects from the audit are repaired, the repaired logic is exercised by 116 automated tests
+that ran on a real Windows runner, both Debug and Release x64 build with `TreatWarningsAsErrors`, and every defect the
+first CI runs exposed (restore, compile, XAML entry point, P/Invoke layout) has been fixed and re-verified on the same
+commit that is green.
 
-Promotion criteria:
+Promotion criteria (all met):
 
-- [ ] Windows CI run green: restore, Debug x64 build, all tests, Release x64 build.
-- [ ] TRX artifacts downloaded and test counts recorded here with real numbers.
-- [ ] `CS0067` risk resolved or confirmed absent.
-- [ ] Any CI-surfaced compile errors fixed and re-verified.
-- [ ] Commits and SHAs recorded from the real repository.
+- [x] Windows CI run green: restore, Debug x64 build, all tests, Release x64 build — [run 42662083139](https://github.com/MOT1209/KING-Rtest/actions/runs/42662083139).
+- [x] TRX artifacts downloaded and test counts recorded with real numbers: 116 passed, 0 failed, 0 skipped.
+- [x] `CS0067` confirmed real, then narrowed to two documented pragmas that Phase 1/3 must remove.
+- [x] Every CI-surfaced compile error fixed and re-verified (see §B and §C.1).
+- [x] Commits and SHAs recorded from the real repository (see §C.3).
+
+This verdict covers the *foundation* only. No capture, audio, compositing or encoding capability exists, and
+`FOUNDATION READY` must not be read as "recordings work".
 
 ---
 
