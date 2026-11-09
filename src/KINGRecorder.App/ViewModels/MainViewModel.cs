@@ -43,13 +43,26 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         _recordingEngine.StateChanged += OnRecordingStateChanged;
     }
 
+    private bool _disposed;
+
     public void Dispose()
     {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
         _recordingEngine.StateChanged -= OnRecordingStateChanged;
     }
 
     public async Task InitializeAsync()
     {
+        if (_disposed)
+        {
+            return;
+        }
+
         try
         {
             CurrentOptions = await _settingsManager.LoadSettingsAsync();
@@ -62,6 +75,11 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     private void OnRecordingStateChanged(object? sender, RecordingStateChangedEventArgs e)
     {
+        if (_disposed)
+        {
+            return;
+        }
+
         CurrentState = e.NewState;
         IsRecording = e.NewState == RecordingState.Recording;
         IsPaused = e.NewState == RecordingState.Paused;

@@ -1,47 +1,48 @@
-# KING RECORDER — Phase 0.1.2 Build & Validation Guide
+# KING RECORDER — Build & Validation Guide
 
 ## 1. Development Environment Requirements
 
 - **Operating System**: Windows 11 (Recommended) or Windows 10 (Build 19041+).
-- **IDE**: Visual Studio 2022 (Version 17.9 or newer).
+- **IDE**: Visual Studio 2022 (Version 17.10 or newer).
 - **Workloads**:
   - *.NET Desktop Development*
   - *Windows App SDK C# Templates / WinUI 3 tooling*
-- **SDK**: .NET 10.0 SDK (LTS).
+- **SDK**: .NET 10.0 SDK (`10.0.100` pinned via `global.json`).
 
 ---
 
 ## 2. Solution Structure & Platform Targets
 
 - **Primary Architecture Target**: `x64`
+- **Compiler Warnings**: `<TreatWarningsAsErrors>true</TreatWarningsAsErrors>` enforced across all projects.
 - **Configuration Mappings**:
   - `Debug|x64` ➔ Maps to `Debug|x64` across all 10 solution projects.
   - `Release|x64` ➔ Maps to `Release|x64` across all 10 solution projects.
 - **Central Package Management**: Enforced via `Directory.Packages.props`.
-- **SDK Pinning**: Enforced via `global.json` (`10.0.100`, `latestMinor`).
+- **SDK Pinning**: Enforced via `global.json` (`10.0.100`, `rollForward: latestMinor`).
 
 ---
 
 ## 3. Command Line Build & Test Instructions
 
-Open PowerShell or Visual Studio Developer Command Prompt at the repository root:
+Execute in PowerShell or Developer Command Prompt at the repository root:
 
 ```powershell
-# 1. Print environment & SDK information
+# 1. Print environment & SDK information (Stage A)
 dotnet --info
 dotnet --list-sdks
 
-# 2. Restore all solution packages centrally
+# 2. Restore all solution packages centrally (Stage B)
 dotnet restore KINGRecorder.sln
 
-# 3. Build the solution in Debug configuration (x64)
-dotnet build KINGRecorder.sln -c Debug -p:Platform=x64
+# 3. Build the solution in Debug configuration (x64) (Stage C)
+dotnet build KINGRecorder.sln -c Debug --no-restore -p:Platform=x64
 
-# 4. Execute all unit and component test projects
-dotnet test KINGRecorder.sln -c Debug -p:Platform=x64
+# 4. Execute all unit and component test projects (Stage D)
+dotnet test KINGRecorder.sln -c Debug --no-build -p:Platform=x64 --logger "trx;LogFileName=test_results.trx"
 
-# 5. Build in Release configuration for distribution
-dotnet build KINGRecorder.sln -c Release -p:Platform=x64
+# 5. Build in Release configuration for distribution (Stage E)
+dotnet build KINGRecorder.sln -c Release --no-restore -p:Platform=x64
 ```
 
 ---
@@ -49,3 +50,4 @@ dotnet build KINGRecorder.sln -c Release -p:Platform=x64
 ## 4. Automated Windows CI / CD
 
 Automated verification runs on GitHub Actions (`.github/workflows/windows-build.yml`), executing NuGet restore, Debug compilation, xUnit test execution, and Release packaging on `windows-latest` runners with .NET 10 SDK.
+Triggers: `push` to `main` and `repair/*`, `pull_request` to `main`, and manual `workflow_dispatch`.

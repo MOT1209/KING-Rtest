@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Drawing;
 using System.Runtime.InteropServices;
@@ -20,9 +21,10 @@ using Device = SharpDX.Direct3D11.Device;
 
 namespace KINGRecorder.Capture.ScreenCapture;
 
-public sealed class Direct3D11CaptureEngine : IScreenCaptureService
+public sealed class Direct3D11CaptureEngine : IScreenCaptureService, IAsyncDisposable
 {
     private readonly ILogger<Direct3D11CaptureEngine> _logger;
+    private readonly object _syncLock = new();
     private GraphicsCaptureItem? _captureItem;
     private Direct3D11CaptureFramePool? _framePool;
     private GraphicsCaptureSession? _session;
@@ -30,6 +32,7 @@ public sealed class Direct3D11CaptureEngine : IScreenCaptureService
     private IDirect3DDevice? _winRtDevice;
     private SizeInt32 _lastSize;
     private long _capturedFramesCount;
+    private bool _disposed;
 
     public event EventHandler<FrameArrivedEventArgs>? FrameArrived;
     public bool IsCapturing { get; private set; }
@@ -39,14 +42,35 @@ public sealed class Direct3D11CaptureEngine : IScreenCaptureService
         _logger = logger;
     }
 
+    /// <summary>
+    /// Calculates DPI scale factor from raw DPI value.
+    /// Baseline 96 DPI is 1.0 (100% scaling).
+    /// </summary>
+    public static double CalculateDpiScale(uint dpi)
+    {
+        if (dpi == 0)
+        {
+            return 1.0;
+        }
+
+        return Math.Round((double)dpi / 96.0, 4);
+    }
+
     public Task<IReadOnlyList<DisplayInfo>> GetDisplaysAsync(CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
+
         var displays = new List<DisplayInfo>();
 
         try
         {
             bool success = EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, (IntPtr hMonitor, IntPtr hdcMonitor, ref RECT lprcMonitor, IntPtr dwData) =>
             {
+                if (ct.IsCancellationRequested)
+                {
+                    return false; // Stop enumeration immediately on cancellation
+                }
+
                 var mi = new MONITORINFOEX();
                 mi.cbSize = (uint)Marshal.SizeOf<MONITORINFOEX>();
 
@@ -72,26 +96,40 @@ public sealed class Direct3D11CaptureEngine : IScreenCaptureService
                             refreshRate = (int)devMode.dmDisplayFrequency;
                         }
                     }
+                    else
+                    {
+                        int err = Marshal.GetLastWin32Error();
+                        _logger.LogDebug("EnumDisplaySettings returned false for device {Device} (Win32 error: {Error})", deviceName, err);
+                    }
 
                     // Query real monitor DPI via shcore GetDpiForMonitor / user32 GetDpiForSystem
                     double dpiScale = 1.0;
                     try
                     {
-                        if (GetDpiForMonitor(hMonitor, MDT_EFFECTIVE_DPI, out uint dpiX, out _) == 0 && dpiX > 0)
+                        int hresult = GetDpiForMonitor(hMonitor, MDT_EFFECTIVE_DPI, out uint dpiX, out _);
+                        if (hresult == 0 && dpiX > 0)
                         {
-                            dpiScale = dpiX / 96.0;
+                            dpiScale = CalculateDpiScale(dpiX);
                         }
                         else
                         {
+                            _logger.LogDebug("GetDpiForMonitor returned HRESULT 0x{HResult:X8} for hMonitor {Handle}. Falling back to system DPI.", hresult, hMonitor);
                             uint systemDpi = GetDpiForSystem();
                             if (systemDpi > 0)
                             {
-                                dpiScale = systemDpi / 96.0;
+                                dpiScale = CalculateDpiScale(systemDpi);
+                            }
+                            else
+                            {
+                                int systemDpiErr = Marshal.GetLastWin32Error();
+                                _logger.LogDebug("GetDpiForSystem returned 0 (Win32 error: {Error}). Defaulting DPI scale to 1.0.", systemDpiErr);
+                                dpiScale = 1.0;
                             }
                         }
                     }
-                    catch
+                    catch (Exception ex)
                     {
+                        _logger.LogDebug(ex, "DPI query threw an exception for hMonitor {Handle}. Defaulting DPI scale to 1.0.", hMonitor);
                         dpiScale = 1.0;
                     }
 
@@ -106,13 +144,26 @@ public sealed class Direct3D11CaptureEngine : IScreenCaptureService
                         Bounds: new Rectangle(mi.rcMonitor.Left, mi.rcMonitor.Top, width, height)
                     ));
                 }
-                return true;
+                else
+                {
+                    int err = Marshal.GetLastWin32Error();
+                    _logger.LogDebug("GetMonitorInfo failed for hMonitor {Handle} with Win32 error {Error}", hMonitor, err);
+                }
+
+                return !ct.IsCancellationRequested;
             }, IntPtr.Zero);
 
-            if (!success || displays.Count == 0)
+            ct.ThrowIfCancellationRequested();
+
+            if (!success && displays.Count == 0)
             {
-                _logger.LogWarning("EnumDisplayMonitors returned no displays. Returning empty list without fake fallbacks.");
+                int err = Marshal.GetLastWin32Error();
+                _logger.LogWarning("EnumDisplayMonitors returned false with Win32 error {Error}. Returning empty list without fake fallbacks.", err);
             }
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -124,32 +175,51 @@ public sealed class Direct3D11CaptureEngine : IScreenCaptureService
 
     public Task<IReadOnlyList<WindowInfo>> GetOpenWindowsAsync(CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
+
         var windows = new List<WindowInfo>();
 
         try
         {
             EnumWindows((hWnd, lParam) =>
             {
+                if (ct.IsCancellationRequested)
+                {
+                    return false; // Stop enumeration immediately on cancellation
+                }
+
                 if (IsWindowVisible(hWnd) && GetWindowTextLength(hWnd) > 0)
                 {
                     bool isMinimized = IsIconic(hWnd);
 
                     // Filter cloaked UWP windows (using 4-byte BOOL marshalling)
-                    if (DwmGetWindowAttribute(hWnd, DWMWA_CLOAKED, out bool isCloaked, sizeof(int)) == 0 && isCloaked)
+                    int dwmResult = DwmGetWindowAttribute(hWnd, DWMWA_CLOAKED, out bool isCloaked, sizeof(int));
+                    if (dwmResult == 0 && isCloaked)
                     {
-                        return true;
+                        return !ct.IsCancellationRequested;
                     }
 
                     var sb = new StringBuilder(256);
-                    GetWindowText(hWnd, sb, sb.Capacity);
-                    string title = sb.ToString().Trim();
-
-                    if (string.IsNullOrEmpty(title))
+                    int textLen = GetWindowText(hWnd, sb, sb.Capacity);
+                    if (textLen <= 0)
                     {
-                        return true;
+                        return !ct.IsCancellationRequested;
                     }
 
-                    GetWindowRect(hWnd, out RECT rect);
+                    string title = sb.ToString().Trim();
+                    if (string.IsNullOrEmpty(title))
+                    {
+                        return !ct.IsCancellationRequested;
+                    }
+
+                    // Explicitly check GetWindowRect return value
+                    if (!GetWindowRect(hWnd, out RECT rect))
+                    {
+                        int err = Marshal.GetLastWin32Error();
+                        _logger.LogDebug("GetWindowRect failed for hWnd {Handle} with Win32 error {Error}", hWnd, err);
+                        return !ct.IsCancellationRequested;
+                    }
+
                     int width = rect.Right - rect.Left;
                     int height = rect.Bottom - rect.Top;
 
@@ -157,14 +227,30 @@ public sealed class Direct3D11CaptureEngine : IScreenCaptureService
                     {
                         GetWindowThreadProcessId(hWnd, out uint processId);
                         string processName = "Unknown Process";
-                        try
+
+                        if (processId != 0)
                         {
-                            var proc = Process.GetProcessById((int)processId);
-                            processName = proc.ProcessName + ".exe";
-                        }
-                        catch
-                        {
-                            // Process may have exited or access denied
+                            try
+                            {
+                                using var proc = Process.GetProcessById((int)processId);
+                                processName = proc.ProcessName + ".exe";
+                            }
+                            catch (ArgumentException ex)
+                            {
+                                _logger.LogDebug(ex, "Process ID {ProcessId} for hWnd {Handle} is no longer running.", processId, hWnd);
+                            }
+                            catch (InvalidOperationException ex)
+                            {
+                                _logger.LogDebug(ex, "Process ID {ProcessId} for hWnd {Handle} has terminated.", processId, hWnd);
+                            }
+                            catch (Win32Exception ex)
+                            {
+                                _logger.LogDebug(ex, "Access denied querying process ID {ProcessId} for hWnd {Handle}.", processId, hWnd);
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogDebug(ex, "Unexpected error retrieving process metadata for PID {ProcessId}.", processId);
+                            }
                         }
 
                         windows.Add(new WindowInfo(
@@ -176,8 +262,15 @@ public sealed class Direct3D11CaptureEngine : IScreenCaptureService
                         ));
                     }
                 }
-                return true;
+
+                return !ct.IsCancellationRequested;
             }, IntPtr.Zero);
+
+            ct.ThrowIfCancellationRequested();
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -189,6 +282,8 @@ public sealed class Direct3D11CaptureEngine : IScreenCaptureService
 
     public Task StartCaptureAsync(RecordingOptions options, CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
+
         _logger.LogInformation("Initializing Direct3D 11 screen capture in mode {Mode}", options.Mode);
         IsCapturing = false;
 
@@ -197,18 +292,51 @@ public sealed class Direct3D11CaptureEngine : IScreenCaptureService
 
     public Task StopCaptureAsync(CancellationToken ct = default)
     {
-        _logger.LogInformation("Stopping Direct3D 11 screen capture. Total frames: {Count}", _capturedFramesCount);
-        IsCapturing = false;
-        _session?.Dispose();
-        _session = null;
+        lock (_syncLock)
+        {
+            _logger.LogInformation("Stopping Direct3D 11 screen capture. Total frames: {Count}", _capturedFramesCount);
+            IsCapturing = false;
+            _session?.Dispose();
+            _session = null;
+        }
+
         return Task.CompletedTask;
     }
 
     public void Dispose()
     {
-        StopCaptureAsync().GetAwaiter().GetResult();
-        _framePool?.Dispose();
-        _framePool = null;
+        lock (_syncLock)
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _disposed = true;
+            IsCapturing = false;
+
+            _session?.Dispose();
+            _session = null;
+
+            _framePool?.Dispose();
+            _framePool = null;
+
+            _d3dDevice?.Dispose();
+            _d3dDevice = null;
+
+            _winRtDevice?.Dispose();
+            _winRtDevice = null;
+
+            FrameArrived = null;
+        }
+
+        GC.SuppressFinalize(this);
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        Dispose();
+        return ValueTask.CompletedTask;
     }
 
     // Native Constants & Interop Declarations

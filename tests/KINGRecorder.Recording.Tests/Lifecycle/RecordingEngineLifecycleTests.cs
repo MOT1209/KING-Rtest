@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging.Abstractions;
 using KINGRecorder.Core.Enums;
@@ -17,22 +19,24 @@ public class RecordingEngineLifecycleTests
     {
         public event EventHandler<FrameArrivedEventArgs>? FrameArrived;
         public bool IsCapturing => false;
-        public Task<IReadOnlyList<DisplayInfo>> GetDisplaysAsync(System.Threading.CancellationToken ct = default) => Task.FromResult<IReadOnlyList<DisplayInfo>>(Array.Empty<DisplayInfo>());
-        public Task<IReadOnlyList<WindowInfo>> GetOpenWindowsAsync(System.Threading.CancellationToken ct = default) => Task.FromResult<IReadOnlyList<WindowInfo>>(Array.Empty<WindowInfo>());
-        public Task StartCaptureAsync(RecordingOptions options, System.Threading.CancellationToken ct = default) => Task.CompletedTask;
-        public Task StopCaptureAsync(System.Threading.CancellationToken ct = default) => Task.CompletedTask;
-        public void Dispose() { }
+        public bool IsDisposed { get; private set; }
+        public Task<IReadOnlyList<DisplayInfo>> GetDisplaysAsync(CancellationToken ct = default) => Task.FromResult<IReadOnlyList<DisplayInfo>>(Array.Empty<DisplayInfo>());
+        public Task<IReadOnlyList<WindowInfo>> GetOpenWindowsAsync(CancellationToken ct = default) => Task.FromResult<IReadOnlyList<WindowInfo>>(Array.Empty<WindowInfo>());
+        public Task StartCaptureAsync(RecordingOptions options, CancellationToken ct = default) => Task.CompletedTask;
+        public Task StopCaptureAsync(CancellationToken ct = default) => Task.CompletedTask;
+        public void Dispose() { IsDisposed = true; }
     }
 
     private class FakeAudioService : IAudioCaptureService
     {
         public event EventHandler<AudioDataEventArgs>? AudioDataAvailable;
         public bool IsCapturing => false;
-        public Task<IReadOnlyList<AudioDeviceInfo>> GetMicrophonesAsync(System.Threading.CancellationToken ct = default) => Task.FromResult<IReadOnlyList<AudioDeviceInfo>>(Array.Empty<AudioDeviceInfo>());
-        public Task StartAsync(bool captureMic, string? micId, float micVol, bool captureSystem, float sysVol, System.Threading.CancellationToken ct = default) => Task.CompletedTask;
+        public bool IsDisposed { get; private set; }
+        public Task<IReadOnlyList<AudioDeviceInfo>> GetMicrophonesAsync(CancellationToken ct = default) => Task.FromResult<IReadOnlyList<AudioDeviceInfo>>(Array.Empty<AudioDeviceInfo>());
+        public Task StartAsync(bool captureMic, string? micId, float micVol, bool captureSystem, float sysVol, CancellationToken ct = default) => Task.CompletedTask;
         public void UpdateVolumes(float micVol, float sysVol) { }
-        public Task StopAsync(System.Threading.CancellationToken ct = default) => Task.CompletedTask;
-        public void Dispose() { }
+        public Task StopAsync(CancellationToken ct = default) => Task.CompletedTask;
+        public void Dispose() { IsDisposed = true; }
     }
 
     [Fact]
@@ -81,5 +85,97 @@ public class RecordingEngineLifecycleTests
 
         await Assert.ThrowsAsync<VideoEncoderException>(() => engine.StartRecordingAsync(options));
         Assert.Equal(RecordingState.Error, engine.State);
+    }
+
+    [Fact]
+    public async Task PauseRecording_WhenIdle_ThrowsInvalidOperationException()
+    {
+        using var engine = new RecordingEngine(
+            NullLogger<RecordingEngine>.Instance,
+            new FakeCaptureService(),
+            new FakeAudioService(),
+            new StubVideoCompositor(),
+            new StubEncoderService()
+        );
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => engine.PauseRecordingAsync());
+    }
+
+    [Fact]
+    public async Task ResumeRecording_WhenIdle_ThrowsInvalidOperationException()
+    {
+        using var engine = new RecordingEngine(
+            NullLogger<RecordingEngine>.Instance,
+            new FakeCaptureService(),
+            new FakeAudioService(),
+            new StubVideoCompositor(),
+            new StubEncoderService()
+        );
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => engine.ResumeRecordingAsync());
+    }
+
+    [Fact]
+    public async Task StopRecording_WhenIdle_ThrowsInvalidOperationException()
+    {
+        using var engine = new RecordingEngine(
+            NullLogger<RecordingEngine>.Instance,
+            new FakeCaptureService(),
+            new FakeAudioService(),
+            new StubVideoCompositor(),
+            new StubEncoderService()
+        );
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => engine.StopRecordingAsync());
+    }
+
+    [Fact]
+    public async Task CancelRecording_WhenIdle_ResetsToIdleWithoutError()
+    {
+        using var engine = new RecordingEngine(
+            NullLogger<RecordingEngine>.Instance,
+            new FakeCaptureService(),
+            new FakeAudioService(),
+            new StubVideoCompositor(),
+            new StubEncoderService()
+        );
+
+        await engine.CancelRecordingAsync();
+        Assert.Equal(RecordingState.Idle, engine.State);
+    }
+
+    [Fact]
+    public void RecordingEngine_Dispose_DisposesInnerServices()
+    {
+        var fakeCapture = new FakeCaptureService();
+        var fakeAudio = new FakeAudioService();
+
+        var engine = new RecordingEngine(
+            NullLogger<RecordingEngine>.Instance,
+            fakeCapture,
+            fakeAudio,
+            new StubVideoCompositor(),
+            new StubEncoderService()
+        );
+
+        engine.Dispose();
+
+        Assert.True(fakeCapture.IsDisposed);
+        Assert.True(fakeAudio.IsDisposed);
+    }
+
+    [Fact]
+    public void RecordingEngine_DoubleDispose_IsIdempotent()
+    {
+        var engine = new RecordingEngine(
+            NullLogger<RecordingEngine>.Instance,
+            new FakeCaptureService(),
+            new FakeAudioService(),
+            new StubVideoCompositor(),
+            new StubEncoderService()
+        );
+
+        engine.Dispose();
+        engine.Dispose(); // second call must not throw
     }
 }

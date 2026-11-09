@@ -10,7 +10,7 @@ This document records the official package and framework selections for **KING R
 |---|---|---|---|---|
 | **.NET SDK** | `.NET 10.0 LTS` | Windows 10 (19041+) / Windows 11 | MIT | Active Long Term Support release with C# 13 default support, enhanced RyuJIT code generation, and low-allocation Span/Memory primitives for real-time frame buffering. |
 | **Windows App SDK** | `1.5.240802000` | Windows 10/11 x64 | MIT | Modern native Windows UI and application lifecycle platform replacing legacy UWP and WPF. Delivers WinUI 3 with Mica/Acrylic materials. |
-| **Windows SDK Tools** | `10.0.22621.3233` | Windows 11 22H2+ | Proprietary (MS) | Generates XAML markup compilers and WinRT projection stubs. |
+| **Windows SDK BuildTools** | `10.0.26100.1742` | Windows 10 (19041+) / Windows 11 | Proprietary (MS) | Generates XAML markup compilers and WinRT projection stubs. Matches Directory.Packages.props. |
 
 ---
 

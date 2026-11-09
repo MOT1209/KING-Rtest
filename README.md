@@ -19,6 +19,21 @@
 - **Dynamic File Management**: Output directory dynamically uses `Environment.SpecialFolder.MyVideos` without hardcoded user paths.
 - **Truthful Hardware Reporting**: Explicit state reporting; un-implemented pipelines throw `NotSupportedException` while maintaining `IsCapturing = false`. Zero fake files or simulated hardware meters.
 
+### Implementation Status Matrix
+- **Implemented & Verified in Phase 0.1.4**:
+  - Native Windows application solution foundation (10 projects, .NET 10 LTS, x64).
+  - Win32 Display & Monitor Enumeration (`EnumDisplayMonitors`, `MONITORINFOEX`, `DEVMODE` refresh rate, `GetDpiForMonitor`).
+  - Win32 Window Enumeration (`EnumWindows`, title, process name, iconic minimized check, `DWMWA_CLOAKED`).
+  - Atomic Settings persistence & validation (`SettingsManager` with dynamic `MyVideos` folder).
+  - MVVM Presentation architecture & clean unsubscription lifecycle (`MainViewModel`).
+  - xUnit production-backed unit tests (layout offsets, DPI math, state transitions, lifecycle disposal).
+- **Scheduled for Subsequent Implementation Phases**:
+  - **Phase 1**: Real `Windows.Graphics.Capture` item creation, `Direct3D11CaptureFramePool`, and swapchain texture rendering.
+  - **Phase 2**: Webcam device capture & GPU alpha mask composition (circle / rounded rectangle).
+  - **Phase 3**: WASAPI system audio loopback & microphone capture with 48kHz audio limiter.
+  - **Phase 4**: Windows Media Foundation hardware-accelerated H.264/AAC MP4 multiplexing (`IMFSinkWriter`).
+  - **Phase 5**: Complete recording dashboard & library management.
+
 ---
 
 ## 2. Solution Structure
