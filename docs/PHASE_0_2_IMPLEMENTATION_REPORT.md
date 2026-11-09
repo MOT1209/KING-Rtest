@@ -157,7 +157,11 @@ Other checks actually performed:
 Branch `phase-0.2-foundation-repair` on `https://github.com/MOT1209/KING-Rtest.git`, branched from
 `main` @ `a320059116d81bc8ac84c99ec425935fef4e0d93` ("merge: Phase 0.1.5 final foundation closure"). The workspace used
 for the edits is not itself a clone of that repository, so the change set was staged in a clean clone of `origin/main`
-and only the 34 intended paths were committed there; `main` was not modified and no force-push was used.
+and only the 34 intended paths were committed there; `main` was untouched while the phase was in progress and no
+force-push was ever used.
+
+Merged into `main` through pull request #1 as merge commit `72ac35bed77d`, and run
+[42664717105](https://github.com/MOT1209/KING-Rtest/actions/runs/42664717105) is green on that commit.
 
 | Commit | Subject |
 |---|---|
