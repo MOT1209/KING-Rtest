@@ -1,0 +1,56 @@
+name: Windows Build & Test Validation
+
+on:
+  push:
+    branches: [ main, "repair/**" ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+
+    - name: Setup .NET 10 SDK
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '10.0.x'
+
+    - name: Stage A - Environment & SDK Information
+      run: |
+        dotnet --info
+        dotnet --list-sdks
+
+    - name: Stage B - Restore NuGet Dependencies
+      run: dotnet restore KINGRecorder.sln
+
+    - name: Stage C - Debug x64 Build
+      run: dotnet build KINGRecorder.sln -c Debug --no-restore -p:Platform=x64
+
+    - name: Stage D - Run Automated Tests
+      run: dotnet test KINGRecorder.sln -c Debug --no-build -p:Platform=x64 --logger "trx;LogFileName=test_results.trx"
+
+    - name: Stage D - Upload Test Results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: test-results
+        path: "**/test_results.trx"
+        if-no-files-found: ignore
+
+    - name: Stage E - Release x64 Build
+      run: dotnet build KINGRecorder.sln -c Release --no-restore -p:Platform=x64
+
+    - name: Stage E - Upload Release Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: release-build
+        path: src/KINGRecorder.App/bin/x64/Release/
+        if-no-files-found: ignore
