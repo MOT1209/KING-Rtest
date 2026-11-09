@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>KINGRecorder.Presentation</RootNamespace>
+  </PropertyGroup>
+
+  <!-- No WinUI reference on purpose: the ViewModel must be unit-testable without a XAML window. -->
+  <ItemGroup>
+    <ProjectReference Include="..\KINGRecorder.Core\KINGRecorder.Core.csproj" />
+    <ProjectReference Include="..\KINGRecorder.Infrastructure\KINGRecorder.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+  </ItemGroup>
+</Project>
