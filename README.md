@@ -4,10 +4,10 @@
 **Target Platform:** Windows 10 (Build 19041+) / Windows 11, x64
 **Architecture:** Native Windows Desktop (WinUI 3 + Windows App SDK 1.5 + .NET 10)
 **Design Identity:** Premium KING (charcoal black, gold, recording red)
-**Engineering phase:** 0.2 — Foundation Repair & Stabilization (**FOUNDATION READY**, Windows CI green)
+**Engineering phase:** 0.2.1 — Lifecycle Reliability & UI Thread Safety (**FOUNDATION READY**, Windows CI green)
 
 > **Honest status:** the native application shell, native device enumeration and the recording **session state
-> machine** exist, and 116 automated tests pass on Windows CI. Screen capture, webcam capture, audio capture, video
+> machine** exist, and 138 automated tests pass on Windows CI. Screen capture, webcam capture, audio capture, video
 > composition and MP4 encoding **do not exist yet** and throw `NotSupportedException` rather than producing fake
 > recordings.
 
@@ -17,12 +17,16 @@
 
 | Capability | Status |
 |---|---|
-| Solution & projects (10 projects, .NET 10 LTS, x64, central package management) | Verified by inspection |
+| Solution & projects (12 projects, .NET 10 LTS, x64, central package management) | Verified by inspection |
 | Win32 display enumeration (monitors, refresh rate, per-monitor DPI) | Implemented, unit tested |
 | Win32 window enumeration (visible/titled/non-cloaked, process name, minimized) | Implemented, unit tested |
 | Settings persistence (atomic JSON, validated volumes, `MyVideos` default) | Implemented, unit tested |
 | Recording lifecycle state machine (validated transitions, recovery, cancellation, serialized Start/Stop) | Implemented in Phase 0.2; verified by the Core and Recording test suites in CI |
 | Dependency injection composition (per-layer registrations, provider validation, deterministic shutdown) | Implemented in Phase 0.2; layer registrations unit tested in CI |
+| Event notification isolation (a throwing subscriber cannot abort a transition or mask the recording exception) | Implemented in Phase 0.2.1; unit tested in CI |
+| UI thread dispatching (`IUiDispatcher`, WinUI adapter in `App`, none in `Core`/`Recording`) | Implemented in Phase 0.2.1; unit tested with a fake dispatcher, not against a real `DispatcherQueue` |
+| Coordinated asynchronous shutdown (`ShutdownAsync`, `IAsyncDisposable`, before container disposal) | Implemented in Phase 0.2.1; unit tested in CI |
+| Incomplete output cleanup on failed or cancelled initialization | Implemented in Phase 0.2.1; unit tested with real file assertions |
 | Pause / resume | **Not supported** — no pipeline exists to suspend; engine reports this explicitly |
 | Windows Graphics Capture (`GraphicsCaptureItem`, `Direct3D11CaptureFramePool`) | **Not implemented** (Phase 1) |
 | Webcam capture and GPU overlay compositor | **Not implemented** (Phase 2) |
@@ -48,7 +52,8 @@ KINGRecorder.sln
 ├── Directory.Packages.props         # Central package versions
 ├── global.json                      # SDK 10.0.100 (rollForward: latestMinor)
 ├── src/
-│   ├── KINGRecorder.App/            # WinUI 3 shell, MVVM, composition root
+│   ├── KINGRecorder.App/            # WinUI 3 shell, DispatcherQueue adapter, composition root
+│   ├── KINGRecorder.Presentation/   # MainViewModel, IUiDispatcher (no WinUI reference; unit tested)
 │   ├── KINGRecorder.Core/           # Models, enums, interfaces, exceptions, state table
 │   ├── KINGRecorder.Capture/        # Win32 enumeration today; Windows.Graphics.Capture in Phase 1
 │   ├── KINGRecorder.Audio/          # Device enumeration today; WASAPI in Phase 3
@@ -57,10 +62,12 @@ KINGRecorder.sln
 ├── tests/
 │   ├── KINGRecorder.Core.Tests/            # State machine
 │   ├── KINGRecorder.Capture.Tests/         # Interop layout, DPI, cancellation, DI
-│   ├── KINGRecorder.Recording.Tests/       # Engine lifecycle, DI
+│   ├── KINGRecorder.Recording.Tests/       # Engine lifecycle, event isolation, shutdown, DI
+│   ├── KINGRecorder.Presentation.Tests/    # ViewModel threading with a fake dispatcher
 │   └── KINGRecorder.Infrastructure.Tests/  # Settings persistence, DI
 ├── docs/
-│   ├── PHASE_0_2_AUDIT.md                  # Phase 0.2 audit (current)
+│   ├── PHASE_0_2_1_REPORT.md               # Phase 0.2.1 lifecycle/threading report (current)
+│   ├── PHASE_0_2_AUDIT.md                  # Phase 0.2 audit
 │   ├── PHASE_0_2_IMPLEMENTATION_REPORT.md  # Phase 0.2 changes, evidence, readiness
 │   ├── ARCHITECTURE.md                     # Implemented vs target architecture
 │   ├── BUILD_VALIDATION.md                 # Build, test and CI instructions
@@ -68,7 +75,7 @@ KINGRecorder.sln
 │   ├── MIGRATION_PLAN.md
 │   ├── FINAL_ENGINEERING_AUDIT.md          # Earlier audit (see its Phase 0.2 correction note)
 │   └── PHASE_0_1*_REPORT.md
-├── .github/workflows/windows-build.yml     # Windows CI (green on phase-0.2-foundation-repair)
+├── .github/workflows/windows-build.yml     # Windows CI (green on phase-0.2.1-lifecycle-hardening)
 └── prototype/                              # Preserved React prototype (not part of the product build)
 ```
 
@@ -92,23 +99,24 @@ dotnet build KINGRecorder.sln -c Release -p:Platform=x64
 
 ### Validation status
 
-Windows CI is green on commit `0c40e28bc242`:
-[run 42662083139](https://github.com/MOT1209/KING-Rtest/actions/runs/42662083139) — restore, Debug x64 build,
-**116 passed / 0 failed / 0 skipped**, Release x64 build. The workstation that authored Phase 0.2 has no .NET SDK
-(every `dotnet` command exits `127`), so all numbers come from CI. Details:
+Windows CI is green on commit `9542c1b9a091`:
+[run 42677180920](https://github.com/MOT1209/KING-Rtest/actions/runs/42677180920) — restore, Debug x64 build,
+**138 passed / 0 failed / 0 skipped** across five test projects, Release x64 build. The workstation that authored
+this work has no .NET SDK (every `dotnet` command exits `127`), so all numbers come from CI. Details:
 [docs/BUILD_VALIDATION.md](docs/BUILD_VALIDATION.md).
 
 ### CI
 
 `.github/workflows/windows-build.yml` runs on `windows-latest` with `contents: read`, installs the SDK from
 `global.json`, restores, builds Debug x64, runs the tests (one TRX per project), builds Release x64 and uploads both
-artifacts. It triggers on `main`, `phase-0.2-foundation-repair`, `repair/**`, and on pull requests to `main`;
-`workflow_dispatch` is enabled.
+artifacts. It triggers on `main`, `phase-*`, `repair/**`, and on pull requests to `main`; `workflow_dispatch` is
+enabled.
 
 ---
 
 ## 4. Documentation index
 
+- [Phase 0.2.1 Report](docs/PHASE_0_2_1_REPORT.md) — lifecycle, UI-threading and shutdown repairs with evidence.
 - [Phase 0.2 Audit](docs/PHASE_0_2_AUDIT.md) — what is implemented, partial, missing, or broken.
 - [Phase 0.2 Implementation Report](docs/PHASE_0_2_IMPLEMENTATION_REPORT.md) — changes, validation evidence, readiness.
 - [Architecture](docs/ARCHITECTURE.md) — layers, DI lifetimes, ownership rules, state machine, target pipelines.

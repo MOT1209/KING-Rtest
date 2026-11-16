@@ -85,6 +85,9 @@ internal sealed class FakeAudioCaptureService : IAudioCaptureService
 
     public int StopCount { get; private set; }
 
+    /// <summary>When set, the audio stop fails so a session teardown can be proven to clean up safely.</summary>
+    public Exception? StopFailure { get; set; }
+
     public Task<IReadOnlyList<AudioDeviceInfo>> GetMicrophonesAsync(CancellationToken ct = default) =>
         Task.FromResult<IReadOnlyList<AudioDeviceInfo>>(Array.Empty<AudioDeviceInfo>());
 
@@ -103,6 +106,12 @@ internal sealed class FakeAudioCaptureService : IAudioCaptureService
     {
         StopCount++;
         IsCapturing = false;
+
+        if (StopFailure is not null)
+        {
+            throw StopFailure;
+        }
+
         return Task.CompletedTask;
     }
 
@@ -125,17 +134,42 @@ internal sealed class FakeEncoderService : IEncoderService
     /// <summary>When true, initialization creates the output file so a session can be finalized.</summary>
     public bool WriteOutputFile { get; set; }
 
+    /// <summary>
+    /// When set, the output file is written first and this exception is thrown afterwards, so a test can
+    /// prove that a failed initialization removes the partially written file.
+    /// </summary>
+    public Exception? FailAfterWritingOutput { get; set; }
+
     /// <summary>Optional gate used to force deterministic interleaving in concurrency tests.</summary>
     public TaskCompletionSource? InitializeGate { get; set; }
+
+    /// <summary>Signalled when the encoder enters its initialization phase, for deterministic sequencing.</summary>
+    public TaskCompletionSource InitializationEntered { get; } = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    /// <summary>True once the engine observed cancellation while the encoder was initializing.</summary>
+    public bool CancellationObserved { get; private set; }
+
+    /// <summary>When set, the encoder finalization fails, so a session that reached the finalize stage has an incomplete output.</summary>
+    public Exception? FinalizeFailure { get; set; }
 
     public async Task InitializeAsync(string outputPath, int width, int height, int fps, int bitrateBps, CancellationToken ct = default)
     {
         InitializeCount++;
         OutputPath = outputPath;
 
+        InitializationEntered.TrySetResult();
+
         if (InitializeGate is not null)
         {
-            await InitializeGate.Task.ConfigureAwait(false);
+            try
+            {
+                await InitializeGate.Task.WaitAsync(ct).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                CancellationObserved = true;
+                throw;
+            }
         }
 
         if (InitializeFailure is not null)
@@ -146,6 +180,11 @@ internal sealed class FakeEncoderService : IEncoderService
         if (WriteOutputFile)
         {
             await File.WriteAllTextAsync(outputPath, "deterministic fake recording payload", ct).ConfigureAwait(false);
+        }
+
+        if (FailAfterWritingOutput is not null)
+        {
+            throw FailAfterWritingOutput;
         }
     }
 
@@ -160,6 +199,11 @@ internal sealed class FakeEncoderService : IEncoderService
     public Task FinalizeAsync(CancellationToken ct = default)
     {
         FinalizeCount++;
+        if (FinalizeFailure is not null)
+        {
+            throw FinalizeFailure;
+        }
+
         return Task.CompletedTask;
     }
 

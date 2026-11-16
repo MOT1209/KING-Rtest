@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Threading;
@@ -8,6 +9,7 @@ using KINGRecorder.Core.Enums;
 using KINGRecorder.Core.Exceptions;
 using KINGRecorder.Core.Interfaces;
 using KINGRecorder.Core.Models;
+using KINGRecorder.Core.Session;
 using KINGRecorder.Core.State;
 
 namespace KINGRecorder.Recording;
@@ -18,12 +20,25 @@ namespace KINGRecorder.Recording;
 /// <remarks>
 /// <para>
 /// This engine owns the <em>session lifecycle</em> only: state transitions, cancellation, partial
-/// initialization cleanup and error recovery. It does not own the injected pipeline services
+/// initialization cleanup, error recovery and shutdown. It does not own the injected pipeline services
 /// (screen capture, audio capture, compositor, encoder); those are created and disposed by the
 /// dependency-injection composition root.
 /// </para>
 /// <para>
-/// Honest limitations in Phase 0.2, expressed in code rather than in comments alone:
+/// Event subscribers are isolated from the lifecycle: the internal state is committed before any
+/// subscriber runs, every subscriber is invoked inside its own <c>try</c>/<c>catch</c>, and a failing
+/// subscriber can neither abort a transition nor replace the exception a recording operation is about to
+/// throw. Subscriber failures are logged with the transition they were observing.
+/// </para>
+/// <para>
+/// Shutdown is coordinated through both gates: <see cref="ShutdownAsync"/> signals cancellation through the
+/// engine-owned source, waits for an in-flight Start/Stop to finish (bounded by
+/// <see cref="ShutdownGateTimeout"/>), aborts whatever part of the pipeline was started, removes the
+/// incomplete output file, then refuses all further operations. <see cref="Dispose"/> remains available as a
+/// best-effort synchronous path for callers that cannot await, and never disposes container-owned services.
+/// </para>
+/// <para>
+/// Honest limitations in Phase 0.2.1, expressed in code rather than in comments alone:
 /// <list type="bullet">
 /// <item><description>Screen capture, audio capture, video composition and encoding are not implemented.
 /// The registered implementations throw <see cref="NotSupportedException"/>.</description></item>
@@ -34,8 +49,28 @@ namespace KINGRecorder.Recording;
 /// </list>
 /// </para>
 /// </remarks>
-public sealed class RecordingEngine : IRecordingEngine
+public sealed class RecordingEngine : IRecordingEngine, IAsyncDisposable
 {
+    /// <summary>
+    /// Upper bound for how long <see cref="ShutdownAsync"/> waits for an in-flight lifecycle operation before
+    /// releasing the managed resources it was holding. A native pipeline stage that ignores cancellation is
+    /// therefore bounded instead of potentially hanging process shutdown forever.
+    /// </summary>
+    private static readonly TimeSpan ShutdownGateTimeout = TimeSpan.FromSeconds(10);
+
+    private const int LifecycleRunning = 0;
+    private const int LifecycleShuttingDown = 1;
+    private const int LifecycleShutdownCompleted = 2;
+
+    /// <summary>Engine-owned cancellation source; shutdown signals it so in-flight recording work aborts.</summary>
+    private readonly CancellationTokenSource _shutdownCts = new();
+
+    /// <summary>Marks that shutdown already requested cancellation on the engine-owned source.</summary>
+    private int _shutdownSignalled;
+
+    /// <summary>Marks that the engine-owned cancellation source was released during shutdown.</summary>
+    private int _shutdownCtsReleased;
+
     private readonly ILogger<RecordingEngine> _logger;
     private readonly IScreenCaptureService _screenCapture;
     private readonly IAudioCaptureService _audioCapture;
@@ -44,16 +79,23 @@ public sealed class RecordingEngine : IRecordingEngine
 
     /// <summary>Serializes lifecycle operations so concurrent Start/Stop/Cancel calls cannot race.</summary>
     private readonly SemaphoreSlim _lifecycleGate = new(1, 1);
+
+    /// <summary>Serializes shutdown so repeated or concurrent shutdown requests clean up exactly once.</summary>
+    private readonly SemaphoreSlim _shutdownGate = new(1, 1);
+
     private readonly Stopwatch _stopwatch = new();
 
     private RecordingOptions? _currentOptions;
-    private string? _currentOutputPath;
+
+    /// <summary>Owns the output files created by the current recording session and decides who may delete them.</summary>
+    private RecordingSessionContext? _session;
+
     private bool _encoderStarted;
     private bool _captureStarted;
     private bool _audioStarted;
 
     private int _state = (int)RecordingState.Idle;
-    private int _disposed;
+    private int _lifecycle = LifecycleRunning;
 
     public RecordingState State => (RecordingState)Volatile.Read(ref _state);
 
@@ -77,6 +119,10 @@ public sealed class RecordingEngine : IRecordingEngine
         _encoder = encoder ?? throw new ArgumentNullException(nameof(encoder));
     }
 
+    /// <summary>
+    /// Commits the transition to the internal state machine first, then notifies subscribers. The commit
+    /// cannot be rolled back or corrupted by a subscriber, and a throwing subscriber is logged and skipped.
+    /// </summary>
     private void SetState(RecordingState newState, string? error = null)
     {
         var oldState = State;
@@ -92,18 +138,81 @@ public sealed class RecordingEngine : IRecordingEngine
             _logger.LogWarning("RecordingEngine state transition: {OldState} -> {NewState}. Reason: {Reason}", oldState, newState, error);
         }
 
-        StateChanged?.Invoke(this, new RecordingStateChangedEventArgs(oldState, newState, error));
+        RaiseStateChangedSafely(new RecordingStateChangedEventArgs(oldState, newState, error));
     }
+
+    /// <summary>
+    /// Invokes every <see cref="StateChanged"/> subscriber in subscription order, isolating each one.
+    /// </summary>
+    private void RaiseStateChangedSafely(RecordingStateChangedEventArgs args)
+    {
+        var handler = StateChanged;
+        if (handler is null)
+        {
+            return;
+        }
+
+        foreach (var subscriber in handler.GetInvocationList())
+        {
+            try
+            {
+                ((EventHandler<RecordingStateChangedEventArgs>)subscriber)(this, args);
+            }
+            catch (Exception ex)
+            {
+                // Notification never participates in the recording outcome, so the failure is logged and
+                // the remaining subscribers are still notified.
+                _logger.LogError(
+                    ex,
+                    "A StateChanged subscriber threw. Transition={OldState} -> {NewState}, Subscriber={Subscriber}. The exception was isolated from the recording lifecycle.",
+                    args.OldState,
+                    args.NewState,
+                    DescribeSubscriber(subscriber));
+            }
+        }
+    }
+
+    /// <summary>
+    /// Invokes every <see cref="DurationUpdated"/> subscriber in subscription order, isolating each one.
+    /// </summary>
+    private void RaiseDurationUpdatedSafely(TimeSpan duration)
+    {
+        var handler = DurationUpdated;
+        if (handler is null)
+        {
+            return;
+        }
+
+        foreach (var subscriber in handler.GetInvocationList())
+        {
+            try
+            {
+                ((EventHandler<TimeSpan>)subscriber)(this, duration);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(
+                    ex,
+                    "A DurationUpdated subscriber threw. Duration={Duration}, Subscriber={Subscriber}. The exception was isolated from the recording lifecycle.",
+                    duration,
+                    DescribeSubscriber(subscriber));
+            }
+        }
+    }
+
+    private static string DescribeSubscriber(Delegate subscriber) =>
+        subscriber.Method.DeclaringType?.FullName ?? subscriber.Method.Name;
 
     public async Task StartRecordingAsync(RecordingOptions options, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(options);
-        ThrowIfDisposed();
+        ThrowIfShuttingDown();
 
         await _lifecycleGate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            ThrowIfDisposed();
+            // A shutdown that began while this call was queued must win: nothing has been initialized yet.
+            ThrowIfShuttingDown();
 
             var currentState = State;
             if (currentState is not (RecordingState.Idle or RecordingState.Error))
@@ -119,7 +228,7 @@ public sealed class RecordingEngine : IRecordingEngine
             }
 
             _currentOptions = options;
-            _currentOutputPath = null;
+            _session = null;
             _encoderStarted = false;
             _captureStarted = false;
             _audioStarted = false;
@@ -133,23 +242,30 @@ public sealed class RecordingEngine : IRecordingEngine
                     throw new ArgumentException("A recording output directory is required.", nameof(options));
                 }
 
-                var filename = $"KING_REC_{DateTime.Now:yyyyMMdd_HHmmss}.mp4";
-                _currentOutputPath = Path.Combine(options.OutputDirectory, filename);
+                // The output path is resolved from a per-session GUID, so two sessions can never collide.
+                var session = RecordingSessionContext.CreateUnique(options.OutputDirectory);
+                _session = session;
 
                 _logger.LogInformation(
-                    "Initializing recording session. Mode={Mode}, Resolution={Resolution}, Fps={Fps}, Compositor={Compositor}, Encoder={Encoder}, Output={Output}",
+                    "Initializing recording session. SessionId={SessionId}, Mode={Mode}, Resolution={Resolution}, Fps={Fps}, Compositor={Compositor}, Encoder={Encoder}, Output={Output}",
+                    session.SessionId,
                     options.Mode,
                     options.Resolution,
                     (int)options.FrameRate,
                     _compositor.GetType().Name,
                     _encoder.GetType().Name,
-                    _currentOutputPath);
+                    session.OutputPath);
+
+                // The caller token is linked with the engine-owned shutdown token: either source cancels the
+                // in-flight initialization, and the session must abort the partial resources it had opened.
+                using var linkedCancellation = CreateLinkedCancellationToken(ct);
 
                 // Throws NotSupportedException with the UnavailableEncoderService registered in Phase 0.2.
-                await _encoder.InitializeAsync(_currentOutputPath, 1920, 1080, (int)options.FrameRate, 10000000, ct).ConfigureAwait(false);
+                await _encoder.InitializeAsync(session.OutputPath, 1920, 1080, (int)options.FrameRate, 10000000, linkedCancellation.Token).ConfigureAwait(false);
                 _encoderStarted = true;
+                session.RegisterCreatedFile(session.OutputPath);
 
-                await _screenCapture.StartCaptureAsync(options, ct).ConfigureAwait(false);
+                await _screenCapture.StartCaptureAsync(options, linkedCancellation.Token).ConfigureAwait(false);
                 _captureStarted = true;
 
                 await _audioCapture.StartAsync(
@@ -158,18 +274,21 @@ public sealed class RecordingEngine : IRecordingEngine
                     options.MicrophoneVolume,
                     options.CaptureSystemAudio,
                     options.SystemAudioVolume,
-                    ct).ConfigureAwait(false);
+                    linkedCancellation.Token).ConfigureAwait(false);
                 _audioStarted = true;
 
-                ct.ThrowIfCancellationRequested();
+                linkedCancellation.Token.ThrowIfCancellationRequested();
 
                 _stopwatch.Restart();
                 SetState(RecordingState.Recording);
             }
             catch (OperationCanceledException)
             {
-                _logger.LogInformation("Recording session initialization was cancelled; releasing the partially initialized session.");
+                _logger.LogInformation("Recording session initialization was cancelled; releasing the partially initialized session. SessionId={SessionId}", _session?.SessionId);
+
+                var partialSession = _session;
                 await AbortPipelineAsync().ConfigureAwait(false);
+                DeleteSessionArtifacts(partialSession);
                 ResetSessionState();
 
                 // Idle is the normal outcome; fall back to the error path if a subscriber already moved the engine on.
@@ -188,15 +307,21 @@ public sealed class RecordingEngine : IRecordingEngine
             {
                 _logger.LogError(
                     ex,
-                    "Failed to start recording session. Mode={Mode}, Output={Output}",
+                    "Failed to start recording session. SessionId={SessionId}, Mode={Mode}, Output={Output}",
+                    _session?.SessionId,
                     options.Mode,
-                    _currentOutputPath ?? options.OutputDirectory);
+                    _session?.OutputPath ?? options.OutputDirectory);
 
+                // An encoder may have opened the output file before failing; a partial file must not be
+                // left behind looking like a usable recording, and only files owned by this session may go.
+                var partialSession = _session;
                 await AbortPipelineAsync().ConfigureAwait(false);
+                DeleteSessionArtifacts(partialSession);
                 ResetSessionState();
                 MoveToErrorStateOrReset(ex.Message);
 
-                // Preserve the original exception type, message, stack trace and inner exception.
+                // Preserve the original exception type, message, stack trace and inner exception: the
+                // cleanup above and the subscriber notifications are not allowed to replace it.
                 throw;
             }
         }
@@ -213,7 +338,7 @@ public sealed class RecordingEngine : IRecordingEngine
     /// </exception>
     public Task PauseRecordingAsync(CancellationToken ct = default)
     {
-        ThrowIfDisposed();
+        ThrowIfShuttingDown();
 
         var currentState = State;
         if (currentState != RecordingState.Recording)
@@ -231,7 +356,7 @@ public sealed class RecordingEngine : IRecordingEngine
     /// <inheritdoc />
     public Task ResumeRecordingAsync(CancellationToken ct = default)
     {
-        ThrowIfDisposed();
+        ThrowIfShuttingDown();
 
         var currentState = State;
         if (currentState != RecordingState.Paused)
@@ -245,12 +370,12 @@ public sealed class RecordingEngine : IRecordingEngine
 
     public async Task<RecordingItem> StopRecordingAsync(CancellationToken ct = default)
     {
-        ThrowIfDisposed();
+        ThrowIfShuttingDown();
 
         await _lifecycleGate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            ThrowIfDisposed();
+            ThrowIfShuttingDown();
 
             var currentState = State;
             if (currentState is not (RecordingState.Recording or RecordingState.Paused))
@@ -263,29 +388,38 @@ public sealed class RecordingEngine : IRecordingEngine
             _stopwatch.Stop();
 
             var duration = _stopwatch.Elapsed;
-            var outputPath = _currentOutputPath;
+            var session = _session;
+            var outputPath = session?.OutputPath;
             var options = _currentOptions;
 
             try
             {
                 SetState(RecordingState.Finalizing);
 
+                // The caller token is linked with the engine-owned shutdown token so an engine shutdown can
+                // interrupt a stop that is in the middle of finalizing.
+                using var linkedCancellation = CreateLinkedCancellationToken(ct);
+
                 if (_captureStarted)
                 {
-                    await _screenCapture.StopCaptureAsync(ct).ConfigureAwait(false);
+                    await _screenCapture.StopCaptureAsync(linkedCancellation.Token).ConfigureAwait(false);
                     _captureStarted = false;
                 }
 
                 if (_audioStarted)
                 {
-                    await _audioCapture.StopAsync(ct).ConfigureAwait(false);
+                    await _audioCapture.StopAsync(linkedCancellation.Token).ConfigureAwait(false);
                     _audioStarted = false;
                 }
 
                 if (_encoderStarted)
                 {
-                    await _encoder.FinalizeAsync(ct).ConfigureAwait(false);
+                    await _encoder.FinalizeAsync(linkedCancellation.Token).ConfigureAwait(false);
                     _encoderStarted = false;
+
+                    // Finalization succeeded: the output file now represents a complete recording and must
+                    // survive any later cleanup instead of being removed as an incomplete artifact.
+                    session?.MarkFinalized();
                 }
 
                 if (outputPath is null || !File.Exists(outputPath))
@@ -307,7 +441,8 @@ public sealed class RecordingEngine : IRecordingEngine
                     Fps: (int)(options?.FrameRate ?? VideoFrameRate.Fps60),
                     IsScreenshot: false);
 
-                DurationUpdated?.Invoke(this, duration);
+                // A throwing subscriber cannot invalidate a recording that was finalized successfully.
+                RaiseDurationUpdatedSafely(duration);
                 SetState(RecordingState.Completed);
                 ResetSessionState();
                 SetState(RecordingState.Idle);
@@ -318,11 +453,16 @@ public sealed class RecordingEngine : IRecordingEngine
             {
                 _logger.LogError(
                     ex,
-                    "Failed to finalize recording session. Output={Output}, Duration={Duration}",
+                    "Failed to finalize recording session. SessionId={SessionId}, Output={Output}, Duration={Duration}",
+                    session?.SessionId,
                     outputPath ?? "(none)",
                     duration);
 
+                // The finalization of this session failed, so the file it was writing is incomplete: remove
+                // it, but only when the session still owns it and never once it was finalized successfully.
+                var failedSession = _session;
                 await AbortPipelineAsync().ConfigureAwait(false);
+                DeleteSessionArtifacts(failedSession);
                 ResetSessionState();
                 MoveToErrorStateOrReset(ex.Message);
                 throw;
@@ -336,12 +476,12 @@ public sealed class RecordingEngine : IRecordingEngine
 
     public async Task CancelRecordingAsync(CancellationToken ct = default)
     {
-        ThrowIfDisposed();
+        ThrowIfShuttingDown();
 
         await _lifecycleGate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            ThrowIfDisposed();
+            ThrowIfShuttingDown();
 
             var currentState = State;
             if (currentState == RecordingState.Idle)
@@ -363,22 +503,10 @@ public sealed class RecordingEngine : IRecordingEngine
                 SetState(RecordingState.Stopping);
             }
 
-            var outputPath = _currentOutputPath;
+            var outputPath = _session?.OutputPath;
             await AbortPipelineAsync().ConfigureAwait(false);
+            DeleteSessionArtifacts(_session);
             ResetSessionState();
-
-            if (outputPath is not null && File.Exists(outputPath))
-            {
-                try
-                {
-                    File.Delete(outputPath);
-                    _logger.LogInformation("Deleted incomplete recording output {Output}.", outputPath);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Failed to delete incomplete recording output {Output}.", outputPath);
-                }
-            }
 
             SetState(RecordingState.Idle);
         }
@@ -390,7 +518,7 @@ public sealed class RecordingEngine : IRecordingEngine
 
     public Task<string> CaptureScreenshotAsync(RecordingOptions options, CancellationToken ct = default)
     {
-        ThrowIfDisposed();
+        ThrowIfShuttingDown();
         throw new NotSupportedException("Screenshot capture is scheduled for Phase 5 implementation and will not generate fake outputs.");
     }
 
@@ -422,7 +550,7 @@ public sealed class RecordingEngine : IRecordingEngine
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Audio capture stop failed during session cleanup.");
+                _logger.LogWarning(ex, "Audio stop failed during session cleanup.");
             }
 
             _audioStarted = false;
@@ -441,6 +569,89 @@ public sealed class RecordingEngine : IRecordingEngine
 
             _encoderStarted = false;
         }
+    }
+
+    /// <summary>
+    /// Ends the current session (if any) and removes its incomplete output. Must be called while holding
+    /// <see cref="_lifecycleGate"/>.
+    /// </summary>
+    private async Task CleanupActiveSessionAsync()
+    {
+        var session = _session;
+
+        await AbortPipelineAsync().ConfigureAwait(false);
+        DeleteSessionArtifacts(session);
+        ResetSessionState();
+
+        var currentState = State;
+        if (currentState == RecordingState.Idle)
+        {
+            return;
+        }
+
+        if (RecordingStateTransitions.CanTransition(currentState, RecordingState.Idle))
+        {
+            SetState(RecordingState.Idle);
+        }
+        else
+        {
+            MoveToErrorStateOrReset("Recording session was aborted because the recording engine shut down.");
+        }
+    }
+
+    /// <summary>
+    /// Removes the incomplete output files owned by <paramref name="session"/>. Only session-owned files are
+    /// considered, finalized files are preserved, and the helper never throws so that cleanup cannot mask the
+    /// original failure.
+    /// </summary>
+    private void DeleteSessionArtifacts(RecordingSessionContext? session)
+    {
+        if (session is null)
+        {
+            return;
+        }
+
+        foreach (var outputPath in session.DiscoverOwnedFiles())
+        {
+            if (session.TryDeleteOwnedFile(outputPath, out var failure))
+            {
+                _logger.LogInformation(
+                    "Deleted incomplete recording output {Output} owned by session {SessionId}.",
+                    outputPath,
+                    session.SessionId);
+                continue;
+            }
+
+            if (failure is not null)
+            {
+                _logger.LogWarning(
+                    failure,
+                    "Failed to delete incomplete recording output {Output} owned by session {SessionId}.",
+                    outputPath,
+                    session.SessionId);
+                continue;
+            }
+
+            _logger.LogInformation(
+                "Preserved recording output {Output} of session {SessionId} because the session was finalized successfully.",
+                outputPath,
+                session.SessionId);
+        }
+    }
+
+    /// <summary>
+    /// Releases the per-session bookkeeping. Called from every session-end path so a session can never delete
+    /// files for a session that no longer exists.
+    /// </summary>
+    private void ResetSessionState()
+    {
+        _stopwatch.Reset();
+        _currentOptions = null;
+        _session?.Dispose();
+        _session = null;
+        _encoderStarted = false;
+        _captureStarted = false;
+        _audioStarted = false;
     }
 
     /// <summary>
@@ -467,47 +678,207 @@ public sealed class RecordingEngine : IRecordingEngine
         _logger.LogError("RecordingEngine cannot leave state {State} after a failure; manual reset required.", currentState);
     }
 
-    private void ResetSessionState()
+    private void ThrowIfShuttingDown()
     {
-        _stopwatch.Reset();
-        _currentOptions = null;
-        _currentOutputPath = null;
-        _encoderStarted = false;
-        _captureStarted = false;
-        _audioStarted = false;
-    }
-
-    private void ThrowIfDisposed()
-    {
-        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
-    }
-
-    public void Dispose()
-    {
-        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+        var lifecycle = Volatile.Read(ref _lifecycle);
+        if (lifecycle == LifecycleRunning)
         {
             return;
         }
 
-        if (State is RecordingState.Recording or RecordingState.Paused)
+        throw new ObjectDisposedException(
+            nameof(RecordingEngine),
+            lifecycle == LifecycleShuttingDown
+                ? "The recording engine is shutting down and no longer accepts recording requests."
+                : "The recording engine has been shut down and no longer accepts recording requests.");
+    }
+
+    /// <summary>
+    /// Creates a cancellation token that is cancelled by either the caller's token or the engine-owned shutdown
+    /// source. The engine owns one shutdown source for its lifetime; the linked source is released by the caller
+    /// as soon as the lifecycle operation that received it completes.
+    /// </summary>
+    private CancellationTokenSource CreateLinkedCancellationToken(CancellationToken callerToken)
+    {
+        if (callerToken.CanBeCanceled)
         {
-            _logger.LogWarning("RecordingEngine disposed while a session was active. Attempting a best-effort pipeline shutdown.");
-            try
-            {
-                AbortPipelineAsync().GetAwaiter().GetResult();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Best-effort pipeline shutdown during disposal failed.");
-            }
+            return CancellationTokenSource.CreateLinkedTokenSource(callerToken, _shutdownCts.Token);
         }
 
-        _stopwatch.Reset();
-        StateChanged = null;
-        DurationUpdated = null;
+        return CancellationTokenSource.CreateLinkedTokenSource(_shutdownCts.Token);
+    }
+
+    /// <summary>Requests cancellation of in-flight recording work. Idempotent; never blocks.</summary>
+    private void SignalShutdown()
+    {
+        if (Interlocked.Exchange(ref _shutdownSignalled, 1) == 1)
+        {
+            return;
+        }
+
+        try
+        {
+            _shutdownCts.Cancel();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "The recording engine shutdown cancellation could not be signalled.");
+        }
+    }
+
+    /// <summary>Releases the engine-owned cancellation source. Safe to call more than once.</summary>
+    private void ReleaseShutdownCancellation()
+    {
+        if (Interlocked.Exchange(ref _shutdownCtsReleased, 1) == 1)
+        {
+            return;
+        }
+
+        try
+        {
+            _shutdownCts.Dispose();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "The recording engine shutdown cancellation source could not be disposed.");
+        }
+    }
+
+    /// <summary>
+    /// The coordinated asynchronous shutdown path used by the application. It refuses new operations, waits
+    /// for an in-flight Start/Stop to finish (bounded by <see cref="ShutdownGateTimeout"/>), signals cancellation
+    /// immediately so any running initialization releases its partial resources, aborts the active session, and
+    /// removes its incomplete output. Safe to call repeatedly; never disposes container-owned services.
+    /// </summary>
+    public async Task ShutdownAsync()
+    {
+        // Mark shutdown first, then signal: an in-flight operation that observes the token must be cancelled
+        // before the waiting caller proceeds to release the session.
+        Interlocked.CompareExchange(ref _lifecycle, LifecycleShuttingDown, LifecycleRunning);
+        SignalShutdown();
+
+        await _shutdownGate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            if (Volatile.Read(ref _lifecycle) == LifecycleShutdownCompleted)
+            {
+                return;
+            }
+
+            var gateAcquired = await _lifecycleGate.WaitAsync(ShutdownGateTimeout).ConfigureAwait(false);
+
+            if (gateAcquired)
+            {
+                try
+                {
+                    try
+                    {
+                        await CleanupActiveSessionAsync().ConfigureAwait(false);
+                    }
+                    catch (Exception ex)
+                    {
+                        // Cleanup failures are reported, never rethrown: the process is exiting and the
+                        // container will still dispose the remaining services.
+                        _logger.LogError(ex, "Recording engine cleanup failed during shutdown.");
+                    }
+                }
+                finally
+                {
+                    _lifecycleGate.Release();
+                }
+            }
+            else
+            {
+                _logger.LogWarning(
+                    "Recording engine shutdown did not acquire the lifecycle gate within {TimeoutSeconds} seconds; " +
+                    "the following pipeline resources could not be safely terminated: {UnterminatedResources}.",
+                    ShutdownGateTimeout.TotalSeconds,
+                    DescribeUnterminatedResources());
+            }
+
+            ClearEventSubscribers();
+            Volatile.Write(ref _lifecycle, LifecycleShutdownCompleted);
+
+            if (gateAcquired)
+            {
+                ReleaseShutdownCancellation();
+            }
+            else
+            {
+                _logger.LogWarning(
+                    "Recording engine shutdown completed without releasing the cancellation source because an " +
+                    "in-flight lifecycle operation was still holding the lifecycle gate.");
+            }
+
+            _logger.LogInformation("RecordingEngine shutdown completed.");
+        }
+        finally
+        {
+            _shutdownGate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Reports which pipeline resources could not be safely terminated because the shutdown deadline was hit.
+    /// </summary>
+    private string DescribeUnterminatedResources()
+    {
+        var resources = new List<string>();
+        if (_captureStarted)
+        {
+            resources.Add("screen capture");
+        }
+
+        if (_audioStarted)
+        {
+            resources.Add("audio capture");
+        }
+
+        if (_encoderStarted)
+        {
+            resources.Add("encoder");
+        }
+
+        return string.Join(", ", resources);
+    }
+
+    /// <inheritdoc />
+    public async ValueTask DisposeAsync()
+    {
+        await ShutdownAsync().ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Bounded, best-effort synchronous shutdown. Prefer <see cref="ShutdownAsync"/> or
+    /// <see cref="DisposeAsync"/>: this overload cannot await, so it blocks on the coordinated shutdown, which
+    /// itself is bounded by <see cref="ShutdownGateTimeout"/>. If the shutdown could not be completed it is
+    /// logged and the caller is expected to retry or to rely on the async path.
+    /// </summary>
+    public void Dispose()
+    {
+        if (Interlocked.CompareExchange(ref _lifecycle, LifecycleShuttingDown, LifecycleRunning) != LifecycleRunning)
+        {
+            // Shutdown already started or completed; a concurrent ShutdownAsync owns the cleanup.
+            return;
+        }
+
+        try
+        {
+            ShutdownAsync().GetAwaiter().GetResult();
+            _logger.LogInformation("RecordingEngine disposed.");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "RecordingEngine disposal failed; the DI container still owns the injected services.");
+        }
 
         // The injected pipeline services are owned by the DI composition root and are deliberately
         // not disposed here: their lifetime belongs to the container, not to this engine.
-        _logger.LogInformation("RecordingEngine disposed.");
+    }
+
+    private void ClearEventSubscribers()
+    {
+        StateChanged = null;
+        DurationUpdated = null;
     }
 }
