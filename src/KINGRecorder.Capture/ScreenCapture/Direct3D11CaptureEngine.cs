@@ -11,6 +11,8 @@ using Windows.Graphics;
 using Windows.Graphics.Capture;
 using Windows.Graphics.DirectX;
 using Windows.Graphics.DirectX.Direct3D11;
+using Windows.Foundation;
+using WinRT;
 using Microsoft.Extensions.Logging;
 using KINGRecorder.Core.Enums;
 using KINGRecorder.Core.Exceptions;
@@ -31,15 +33,38 @@ public sealed class Direct3D11CaptureEngine : IScreenCaptureService, IAsyncDispo
     private IDirect3DDevice? _winRtDevice;
     private bool _disposed;
 
-    // Declared by IScreenCaptureService, but only raised once the Phase 1 frame pool delivers frames.
-#pragma warning disable CS0067 // Event is never raised until the Windows.Graphics.Capture loop exists.
+    // Phase 1: real Windows.Graphics.Capture frame pool + capture session state.
+    private GraphicsCaptureItem? _captureItem;
+    private SizeInt32 _lastSize;
+    private long _capturedFramesCount;
+
+    // Declared by IScreenCaptureService; raised by the Phase 1 frame pool when frames arrive.
     public event EventHandler<FrameArrivedEventArgs>? FrameArrived;
-#pragma warning restore CS0067
     public bool IsCapturing { get; private set; }
 
     public Direct3D11CaptureEngine(ILogger<Direct3D11CaptureEngine> logger)
     {
         _logger = logger;
+    }
+
+    /// <summary>
+    /// Translates a capture region expressed in logical (DIP) coordinates into physical
+    /// pixel bounds using the region's DPI scale. Pure, side-effect-free helper used by
+    /// the custom-area (selection rectangle) capture path (Phase 1 task 4).
+    /// </summary>
+    public static Rectangle TranslateCaptureRegionToPixels(CaptureRegion region)
+    {
+        ArgumentNullException.ThrowIfNull(region);
+        if (region.DpiScale <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(region), region.DpiScale, "DPI scale must be positive.");
+        }
+
+        return new Rectangle(
+            (int)Math.Round(region.X * region.DpiScale),
+            (int)Math.Round(region.Y * region.DpiScale),
+            (int)Math.Round(region.Width * region.DpiScale),
+            (int)Math.Round(region.Height * region.DpiScale));
     }
 
     /// <summary>
@@ -287,7 +312,33 @@ public sealed class Direct3D11CaptureEngine : IScreenCaptureService, IAsyncDispo
         _logger.LogInformation("Initializing Direct3D 11 screen capture in mode {Mode}", options.Mode);
         IsCapturing = false;
 
-        throw new NotSupportedException("Windows.Graphics.Capture frame pool initialization is scheduled for Phase 1 implementation.");
+        // Phase 1 (task 3): build the Windows.Graphics.Capture frame pool and capture session.
+        // The frame pool delivers zero-copy GPU frames through FrameArrived.
+        var captureItem = CreateCaptureItem(options);
+        var d3dDevice = CreateD3d11Device();
+        var winRtDevice = CreateWinRtDevice(d3dDevice);
+
+        _captureItem = captureItem;
+        _d3dDevice = d3dDevice;
+        _winRtDevice = winRtDevice;
+        _lastSize = captureItem.Size;
+
+        _framePool = Direct3D11CaptureFramePool.CreateFreeThreaded(
+            winRtDevice,
+            DirectXPixelFormat.B8G8R8A8UIntNormalized,
+            2,
+            _lastSize);
+
+        _framePool.FrameArrived += OnFrameArrived;
+        captureItem.Closed += OnCaptureItemClosed;
+
+        _session = _framePool.CreateCaptureSession(captureItem);
+        _session.IsCursorCaptureEnabled = true;
+
+        _session.StartCapture();
+        IsCapturing = true;
+
+        return Task.CompletedTask;
     }
 
     public Task StopCaptureAsync(CancellationToken ct = default)
@@ -296,8 +347,14 @@ public sealed class Direct3D11CaptureEngine : IScreenCaptureService, IAsyncDispo
         {
             _logger.LogInformation("Stopping Direct3D 11 screen capture.");
             IsCapturing = false;
+
             _session?.Dispose();
             _session = null;
+
+            _framePool?.Dispose();
+            _framePool = null;
+
+            _captureItem = null;
         }
 
         return Task.CompletedTask;
@@ -321,6 +378,8 @@ public sealed class Direct3D11CaptureEngine : IScreenCaptureService, IAsyncDispo
             _framePool?.Dispose();
             _framePool = null;
 
+            _captureItem = null;
+
             _d3dDevice?.Dispose();
             _d3dDevice = null;
 
@@ -337,7 +396,113 @@ public sealed class Direct3D11CaptureEngine : IScreenCaptureService, IAsyncDispo
         return ValueTask.CompletedTask;
     }
 
+    private void OnFrameArrived(Direct3D11CaptureFramePool sender, object args)
+    {
+        using var frame = sender.TryGetNextFrame();
+        if (frame is null)
+        {
+            return;
+        }
+
+        Interlocked.Increment(ref _capturedFramesCount);
+
+        var contentSize = frame.ContentSize;
+        if (contentSize.Width != _lastSize.Width || contentSize.Height != _lastSize.Height)
+        {
+            _lastSize = contentSize;
+            _framePool?.Recreate(_winRtDevice, DirectXPixelFormat.B8G8R8A8UIntNormalized, 2, _lastSize);
+        }
+
+        FrameArrived?.Invoke(this, new FrameArrivedEventArgs(
+            frame.Surface is null ? IntPtr.Zero : ((WinRT.IWinRTObject)frame.Surface).NativeObject.ThisPtr,
+            frame.SystemRelativeTime,
+            contentSize.Width,
+            contentSize.Height));
+    }
+
+    private void OnCaptureItemClosed(GraphicsCaptureItem sender, object args)
+    {
+        StopCaptureAsync(CancellationToken.None);
+    }
+
+    private GraphicsCaptureItem CreateCaptureItem(RecordingOptions options)
+    {
+        switch (options.Mode)
+        {
+            case CaptureMode.Window when options.TargetWindow is not null:
+            {
+                var windowId = new Windows.UI.WindowId { Value = (ulong)options.TargetWindow.Handle.ToInt64() };
+                var item = GraphicsCaptureItem.TryCreateFromWindowId(windowId);
+                if (item is null)
+                {
+                    throw new InvalidOperationException(
+                        $"Windows.Graphics.Capture could not create a capture item for window handle {options.TargetWindow.Handle}.");
+                }
+                return item;
+            }
+
+            case CaptureMode.FullScreen:
+            case CaptureMode.CustomArea:
+            {
+                // DisplayServices.FindAll() returns the DisplayIds of all connected displays.
+                // DisplayId carries no human-readable metadata in this projection, so the first
+                // entry (typically the primary display) is used when a specific target cannot be
+                // correlated; TargetDisplay.IsPrimary is honoured best-effort.
+                var displayIds = Windows.Graphics.Display.DisplayServices.FindAll();
+                if (displayIds is null || displayIds.Length == 0)
+                {
+                    throw new InvalidOperationException("No displays available for Windows.Graphics.Capture.");
+                }
+
+                Windows.Graphics.DisplayId chosen = displayIds[0];
+                if (options.TargetDisplay is { IsPrimary: true } && displayIds.Length > 0)
+                {
+                    chosen = displayIds[0];
+                }
+
+                var item = GraphicsCaptureItem.TryCreateFromDisplayId(chosen);
+                if (item is null)
+                {
+                    throw new InvalidOperationException("Windows.Graphics.Capture could not create a capture item for the selected display.");
+                }
+                return item;
+            }
+
+            default:
+                throw new NotSupportedException($"Capture mode {options.Mode} is not supported by the Windows.Graphics.Capture pipeline.");
+        }
+    }
+
+    private Device CreateD3d11Device()
+    {
+        return new Device(
+            SharpDX.Direct3D.DriverType.Hardware,
+            SharpDX.Direct3D11.DeviceCreationFlags.BgraSupport,
+            new[] { SharpDX.Direct3D.FeatureLevel.Level_11_0 });
+    }
+
+    private IDirect3DDevice CreateWinRtDevice(Device d3dDevice)
+    {
+        using var dxgiDevice = d3dDevice.QueryInterface<SharpDX.DXGI.Device>();
+        int hr = CreateDirect3D11DeviceFromDXGIDevice(dxgiDevice.NativePointer, out IntPtr graphicsDevicePtr);
+        if (hr < 0)
+        {
+            throw new System.ComponentModel.Win32Exception(hr);
+        }
+
+        try
+        {
+            return WinRT.MarshalInterface<Windows.Graphics.DirectX.Direct3D11.IDirect3DDevice>.FromAbi(graphicsDevicePtr);
+        }
+        finally
+        {
+            System.Runtime.InteropServices.Marshal.Release(graphicsDevicePtr);
+        }
+    }
+
     // Native Constants & Interop Declarations
+    [DllImport("d3d11.dll", EntryPoint = "CreateDirect3D11DeviceFromDXGIDevice", PreserveSig = true)]
+    private static extern int CreateDirect3D11DeviceFromDXGIDevice(IntPtr dxgiDevice, out IntPtr graphicsDevice);
     private delegate bool MonitorEnumProc(IntPtr hMonitor, IntPtr hdcMonitor, ref RECT lprcMonitor, IntPtr dwData);
     private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
 
