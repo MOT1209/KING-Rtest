@@ -48,6 +48,26 @@ public sealed class Direct3D11CaptureEngine : IScreenCaptureService, IAsyncDispo
     }
 
     /// <summary>
+    /// Translates a capture region expressed in logical (DIP) coordinates into physical
+    /// pixel bounds using the region's DPI scale. Pure, side-effect-free helper used by
+    /// the custom-area (selection rectangle) capture path (Phase 1 task 4).
+    /// </summary>
+    public static Rectangle TranslateCaptureRegionToPixels(CaptureRegion region)
+    {
+        ArgumentNullException.ThrowIfNull(region);
+        if (region.DpiScale <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(region), region.DpiScale, "DPI scale must be positive.");
+        }
+
+        return new Rectangle(
+            (int)Math.Round(region.X * region.DpiScale),
+            (int)Math.Round(region.Y * region.DpiScale),
+            (int)Math.Round(region.Width * region.DpiScale),
+            (int)Math.Round(region.Height * region.DpiScale));
+    }
+
+    /// <summary>
     /// Calculates DPI scale factor from raw DPI value.
     /// Baseline 96 DPI is 1.0 (100% scaling).
     /// </summary>
