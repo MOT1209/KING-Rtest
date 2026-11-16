@@ -64,8 +64,9 @@ public interface IRecordingEngine : IDisposable, IAsyncDisposable
     Task<string> CaptureScreenshotAsync(RecordingOptions options, CancellationToken ct = default);
 
     /// <summary>
-    /// Coordinated shutdown used by the application: refuses new operations, waits for an in-flight
-    /// Start/Stop to finish, aborts the active session, removes its incomplete output and then releases
+    /// Coordinated shutdown used by the application: refuses new operations, signals cancellation of an
+    /// in-flight Start/Stop through the engine-owned cancellation source, waits for an in-flight Start/Stop
+    /// (bounded) to finish, aborts the active session, removes its incomplete output and then releases
     /// the engine's event subscribers. Safe to call repeatedly; never disposes container-owned services.
     /// </summary>
     Task ShutdownAsync();

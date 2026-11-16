@@ -89,7 +89,7 @@ public sealed class EngineShutdownTests : IDisposable
     }
 
     [Fact]
-    public async Task ShutdownAsync_WhileInitializationIsInFlight_WaitsForItAndThenCleansUp()
+    public async Task ShutdownAsync_WhileInitializationIsInFlight_CancelsTheInitializationAndThenCleansUp()
     {
         var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         _encoder.InitializeGate = gate;
@@ -97,19 +97,17 @@ public sealed class EngineShutdownTests : IDisposable
 
         var engine = CreateEngine();
         var start = engine.StartRecordingAsync(CreateOptions());
-        await WaitUntilAsync(() => _encoder.InitializeCount == 1);
+        await _encoder.InitializationEntered.Task;
 
         var shutdown = engine.ShutdownAsync();
-        Assert.False(shutdown.IsCompleted);
-
-        gate.SetResult();
-        await start;
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => start);
         await shutdown;
 
-        Assert.Equal(1, _capture.StartCount);
-        Assert.Equal(1, _capture.StopCount);
-        Assert.Equal(1, _audio.StopCount);
+        // The cancellation released the partially initialized session before the capture/audio stages began.
+        Assert.Equal(0, _capture.StartCount);
+        Assert.Equal(0, _audio.StartCount);
         Assert.False(File.Exists(_encoder.OutputPath));
+        Assert.Equal(RecordingState.Idle, engine.State);
     }
 
     [Fact]
@@ -121,18 +119,16 @@ public sealed class EngineShutdownTests : IDisposable
 
         var engine = CreateEngine();
         var first = engine.StartRecordingAsync(CreateOptions());
-        await WaitUntilAsync(() => _encoder.InitializeCount == 1);
+        await _encoder.InitializationEntered.Task;
 
         var queued = engine.StartRecordingAsync(CreateOptions());
         var shutdown = engine.ShutdownAsync();
 
-        gate.SetResult();
-        await first;
-
-        await Assert.ThrowsAsync<ObjectDisposedException>(() => queued);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => first);
         await shutdown;
 
-        Assert.Equal(1, _capture.StartCount);
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => queued);
+        Assert.Equal(0, _capture.StartCount);
     }
 
     [Fact]
@@ -178,19 +174,5 @@ public sealed class EngineShutdownTests : IDisposable
         Assert.NotNull(outputPath);
         Assert.False(File.Exists(outputPath));
         Assert.Equal(RecordingState.Idle, engine.State);
-    }
-
-    private static async Task WaitUntilAsync(Func<bool> condition)
-    {
-        var stopwatch = Stopwatch.StartNew();
-        while (!condition())
-        {
-            if (stopwatch.Elapsed > TimeSpan.FromSeconds(10))
-            {
-                throw new TimeoutException("The awaited condition was not reached within 10 seconds.");
-            }
-
-            await Task.Delay(10).ConfigureAwait(false);
-        }
     }
 }

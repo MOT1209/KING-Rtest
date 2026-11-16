@@ -31,3 +31,9 @@ public class StoragePermissionException : KingRecorderException
     public StoragePermissionException(string message) : base(message) { }
     public StoragePermissionException(string message, Exception innerException) : base(message, innerException) { }
 }
+
+public class RecordingOutputException : KingRecorderException
+{
+    public RecordingOutputException(string message) : base(message) { }
+    public RecordingOutputException(string message, Exception innerException) : base(message, innerException) { }
+}
