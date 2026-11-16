@@ -12,10 +12,9 @@ namespace KINGRecorder.Capture;
 public static class CaptureServiceCollectionExtensions
 {
     /// <summary>
-    /// Registers the screen-capture service. <see cref="Direct3D11CaptureEngine.StartCaptureAsync"/> now builds
-    /// the Direct3D 11 device, WinRT device and Windows.Graphics.Capture frame pool/session (Phase 1 task 3);
-    /// capture-item creation is limited by the Windows 10 2004 SDK projection and throws a structured
-    /// <see cref="NotSupportedException"/> until a newer SDK (>= 10.0.22000.0) is adopted.
+    /// Registers the screen-capture service. <see cref="Direct3D11CaptureEngine.StartCaptureAsync"/> builds the
+    /// Direct3D 11 device, WinRT device and Windows.Graphics.Capture frame pool/session (Phase 1), supporting
+    /// window capture (via HWND) and display capture (via DisplayServices) on Windows SDK 22621+.
     /// </summary>
     public static IServiceCollection AddKingRecorderCapture(this IServiceCollection services)
     {

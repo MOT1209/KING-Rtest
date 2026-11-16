@@ -427,15 +427,50 @@ public sealed class Direct3D11CaptureEngine : IScreenCaptureService, IAsyncDispo
 
     private GraphicsCaptureItem CreateCaptureItem(RecordingOptions options)
     {
-        // Windows.Graphics.Capture.GraphicsCaptureItem in the Windows 10 2004 SDK projection only exposes
-        // CreateFromVisual; display/window-targeted capture (CreateForDisplay/CreateForWindow) requires a
-        // newer Windows SDK (>= 10.0.22000.0). Surface that limitation as a structured error instead of
-        // silently producing a null item or swallowing the unsupported target.
-        throw new NotSupportedException(
-            "Screen/window capture items cannot be created with the Windows 10 2004 SDK projection " +
-            "(GraphicsCaptureItem only exposes CreateFromVisual). Display- and window-targeted capture " +
-            "requires a Windows SDK >= 10.0.22000.0 (CreateForDisplay/CreateForWindow). " +
-            $"Requested mode: {options.Mode}.");
+        switch (options.Mode)
+        {
+            case CaptureMode.Window when options.TargetWindow is not null:
+            {
+                var windowId = new Windows.UI.WindowId { Value = (ulong)options.TargetWindow.Handle.ToInt64() };
+                var item = GraphicsCaptureItem.TryCreateFromWindowId(windowId);
+                if (item is null)
+                {
+                    throw new InvalidOperationException(
+                        $"Windows.Graphics.Capture could not create a capture item for window handle {options.TargetWindow.Handle}.");
+                }
+                return item;
+            }
+
+            case CaptureMode.FullScreen:
+            case CaptureMode.CustomArea:
+            {
+                // DisplayServices.FindAll() returns the DisplayIds of all connected displays.
+                // DisplayId carries no human-readable metadata in this projection, so the first
+                // entry (typically the primary display) is used when a specific target cannot be
+                // correlated; TargetDisplay.IsPrimary is honoured best-effort.
+                var displayIds = Windows.Graphics.Display.DisplayServices.FindAll();
+                if (displayIds is null || displayIds.Length == 0)
+                {
+                    throw new InvalidOperationException("No displays available for Windows.Graphics.Capture.");
+                }
+
+                Windows.Graphics.DisplayId chosen = displayIds[0];
+                if (options.TargetDisplay is { IsPrimary: true } && displayIds.Length > 0)
+                {
+                    chosen = displayIds[0];
+                }
+
+                var item = GraphicsCaptureItem.TryCreateFromDisplayId(chosen);
+                if (item is null)
+                {
+                    throw new InvalidOperationException("Windows.Graphics.Capture could not create a capture item for the selected display.");
+                }
+                return item;
+            }
+
+            default:
+                throw new NotSupportedException($"Capture mode {options.Mode} is not supported by the Windows.Graphics.Capture pipeline.");
+        }
     }
 
     private Device CreateD3d11Device()
