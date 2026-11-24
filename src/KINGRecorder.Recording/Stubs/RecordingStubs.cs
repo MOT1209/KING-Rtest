@@ -1,5 +1,7 @@
 using System;
 using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
 using KINGRecorder.Core.Interfaces;
 using KINGRecorder.Core.Models;
 
@@ -15,6 +17,32 @@ public sealed class UnavailableVideoCompositor : IVideoCompositor
     public IntPtr Composite(IntPtr screenSurface, IntPtr? webcamSurface, WebcamOverlaySettings overlaySettings)
     {
         throw new NotSupportedException("Direct3D 11 Video Compositor is scheduled for Phase 2 implementation.");
+    }
+
+    public void Dispose()
+    {
+    }
+}
+
+public sealed class UnavailableWebcamService : IWebcamService
+{
+    public event EventHandler<WebcamFrameEventArgs>? WebcamFrameArrived;
+
+    public bool IsPreviewing => false;
+
+    public Task<IReadOnlyList<string>> GetAvailableCamerasAsync(CancellationToken ct = default)
+    {
+        throw new NotSupportedException("Webcam capture is scheduled for Phase 2 implementation.");
+    }
+
+    public Task StartCameraAsync(string? deviceId = null, CancellationToken ct = default)
+    {
+        throw new NotSupportedException("Webcam capture is scheduled for Phase 2 implementation.");
+    }
+
+    public Task StopCameraAsync(CancellationToken ct = default)
+    {
+        return Task.CompletedTask;
     }
 
     public void Dispose()

@@ -20,6 +20,7 @@ public static class RecordingServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
 
         services.TryAddSingleton<IVideoCompositor, UnavailableVideoCompositor>();
+        services.TryAddSingleton<IWebcamService, UnavailableWebcamService>();
         services.TryAddSingleton<IEncoderService, UnavailableEncoderService>();
         services.TryAddSingleton<RecordingEngine>();
         services.TryAddSingleton<IRecordingEngine>(static provider => provider.GetRequiredService<RecordingEngine>());

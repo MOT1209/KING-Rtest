@@ -1,15 +1,16 @@
 # KING RECORDER — Professional Native Windows Screen Recording Studio
 
 **Version:** 1.0.0 MVP
-**Target Platform:** Windows 10 (Build 19041+) / Windows 11, x64
+**Target Platform:** Windows 11 (Build 22621+) / Windows 10 (Build 22621+), x64
 **Architecture:** Native Windows Desktop (WinUI 3 + Windows App SDK 1.5 + .NET 10)
 **Design Identity:** Premium KING (charcoal black, gold, recording red)
-**Engineering phase:** 0.2.1 — Lifecycle Reliability & UI Thread Safety (**FOUNDATION READY**, Windows CI green)
+**Engineering phase:** 1.0 (screen capture in progress) — Lifecycle Reliability & UI Thread Safety (**FOUNDATION READY**, Windows CI green)
 
-> **Honest status:** the native application shell, native device enumeration and the recording **session state
-> machine** exist, and 138 automated tests pass on Windows CI. Screen capture, webcam capture, audio capture, video
-> composition and MP4 encoding **do not exist yet** and throw `NotSupportedException` rather than producing fake
-> recordings.
+> **Honest status (Phase 1 in progress):** the native application shell, native device enumeration, the recording
+> **session state machine**, and a real Windows.Graphics.Capture pipeline (display + window capture, D3D11 device,
+> frame pool, `FrameArrived`) exist. 167 automated tests pass on Windows CI. Webcam capture, WASAPI audio capture,
+> the GPU compositor, H.264/AAC/MP4 encoding and the recording dashboard **do not exist yet** and throw
+> `NotSupportedException` rather than producing fake recordings; an end-to-end MP4 is not yet produced.
 
 ---
 
@@ -28,7 +29,7 @@
 | Coordinated asynchronous shutdown (`ShutdownAsync`, `IAsyncDisposable`, before container disposal) | Implemented in Phase 0.2.1; unit tested in CI |
 | Incomplete output cleanup on failed or cancelled initialization | Implemented in Phase 0.2.1; unit tested with real file assertions |
 | Pause / resume | **Not supported** — no pipeline exists to suspend; engine reports this explicitly |
-| Windows Graphics Capture (`GraphicsCaptureItem`, `Direct3D11CaptureFramePool`) | **Not implemented** (Phase 1) |
+| Windows Graphics Capture (`GraphicsCaptureItem`, `Direct3D11CaptureFramePool`) | **Partially implemented** (Phase 1) — display + window capture items, D3D11 device, WinRT interop, frame pool, session, `FrameArrived`; frame consumer/preview still pending |
 | Webcam capture and GPU overlay compositor | **Not implemented** (Phase 2) |
 | WASAPI system/microphone capture and mixing | **Not implemented** (Phase 3) |
 | H.264/AAC/MP4 encoding (Media Foundation) | **Not implemented** (Phase 4) |
@@ -101,7 +102,7 @@ dotnet build KINGRecorder.sln -c Release -p:Platform=x64
 
 Windows CI is green on commit `9542c1b9a091`:
 [run 42677180920](https://github.com/MOT1209/KING-Rtest/actions/runs/42677180920) — restore, Debug x64 build,
-**138 passed / 0 failed / 0 skipped** across five test projects, Release x64 build. The workstation that authored
+**167 passed / 0 failed / 0 skipped** across five test projects, Release x64 build. The workstation that authored
 this work has no .NET SDK (every `dotnet` command exits `127`), so all numbers come from CI. Details:
 [docs/BUILD_VALIDATION.md](docs/BUILD_VALIDATION.md).
 

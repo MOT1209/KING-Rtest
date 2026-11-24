@@ -37,10 +37,24 @@ public sealed class Direct3D11CaptureEngine : IScreenCaptureService, IAsyncDispo
     private GraphicsCaptureItem? _captureItem;
     private SizeInt32 _lastSize;
     private long _capturedFramesCount;
+    private long _droppedFramesCount;
+    private CaptureRegion? _captureRegion;
 
     // Declared by IScreenCaptureService; raised by the Phase 1 frame pool when frames arrive.
     public event EventHandler<FrameArrivedEventArgs>? FrameArrived;
     public bool IsCapturing { get; private set; }
+
+    /// <summary>Total frames delivered by the frame pool since capture started.</summary>
+    public long CapturedFramesCount => Interlocked.Read(ref _capturedFramesCount);
+
+    /// <summary>Frames that could not be retrieved (null from TryGetNextFrame) since capture started.</summary>
+    public long DroppedFramesCount => Interlocked.Read(ref _droppedFramesCount);
+
+    /// <summary>
+    /// Region (in logical DIP coordinates) requested for custom-area capture. Null for full-screen/window modes.
+    /// Stored for downstream cropping; the frame pool itself always captures the full display.
+    /// </summary>
+    public CaptureRegion? CaptureRegion => _captureRegion;
 
     public Direct3D11CaptureEngine(ILogger<Direct3D11CaptureEngine> logger)
     {
@@ -312,6 +326,10 @@ public sealed class Direct3D11CaptureEngine : IScreenCaptureService, IAsyncDispo
         _logger.LogInformation("Initializing Direct3D 11 screen capture in mode {Mode}", options.Mode);
         IsCapturing = false;
 
+        Interlocked.Exchange(ref _capturedFramesCount, 0);
+        Interlocked.Exchange(ref _droppedFramesCount, 0);
+        _captureRegion = options.Mode == CaptureMode.CustomArea ? options.CaptureRegion : null;
+
         // Phase 1 (task 3): build the Windows.Graphics.Capture frame pool and capture session.
         // The frame pool delivers zero-copy GPU frames through FrameArrived.
         var captureItem = CreateCaptureItem(options);
@@ -401,6 +419,7 @@ public sealed class Direct3D11CaptureEngine : IScreenCaptureService, IAsyncDispo
         using var frame = sender.TryGetNextFrame();
         if (frame is null)
         {
+            Interlocked.Increment(ref _droppedFramesCount);
             return;
         }
 
@@ -410,7 +429,15 @@ public sealed class Direct3D11CaptureEngine : IScreenCaptureService, IAsyncDispo
         if (contentSize.Width != _lastSize.Width || contentSize.Height != _lastSize.Height)
         {
             _lastSize = contentSize;
-            _framePool?.Recreate(_winRtDevice, DirectXPixelFormat.B8G8R8A8UIntNormalized, 2, _lastSize);
+            try
+            {
+                _framePool?.Recreate(_winRtDevice, DirectXPixelFormat.B8G8R8A8UIntNormalized, 2, _lastSize);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to recreate the capture frame pool for the new content size {Width}x{Height}.", contentSize.Width, contentSize.Height);
+                Interlocked.Increment(ref _droppedFramesCount);
+            }
         }
 
         FrameArrived?.Invoke(this, new FrameArrivedEventArgs(

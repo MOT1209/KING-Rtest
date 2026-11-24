@@ -11,8 +11,8 @@ namespace KINGRecorder.Audio;
 public static class AudioServiceCollectionExtensions
 {
     /// <summary>
-    /// Registers the audio-capture service. <see cref="WasapiAudioCaptureService.StartAsync"/> still throws
-    /// <see cref="NotSupportedException"/> until the WASAPI pipeline exists (Phase 3).
+    /// Registers the audio-capture service. WASAPI loopback + microphone capture are implemented (Phase 3);
+    /// the service raises <see cref="IAudioCaptureService.AudioDataAvailable"/> with gain-applied PCM buffers.
     /// </summary>
     public static IServiceCollection AddKingRecorderAudio(this IServiceCollection services)
     {
