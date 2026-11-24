@@ -177,7 +177,7 @@ directory to `%USERPROFILE%\Videos\KING Recorder`.
 
 ---
 
-## 5. Target capture and composition pipeline (NOT IMPLEMENTED — Phase 1/2)
+## 5. Capture pipeline (PARTIALLY IMPLEMENTED — Phase 1/2)
 
 ```mermaid
 sequenceDiagram
@@ -192,14 +192,14 @@ sequenceDiagram
     Shader->>Sink: WriteVideoSample(timestamp)
 ```
 
-Today `Direct3D11CaptureEngine.StartCaptureAsync` throws `NotSupportedException` and keeps `IsCapturing = false`;
+Today `Direct3D11CaptureEngine.StartCaptureAsync` builds a real D3D11 device, WinRT device, frame pool and capture session (display + window) and sets `IsCapturing = true`; `FrameArrived` is raised with the surface pointer, timestamp and size. Webcam overlay, preview and the frame consumer remain pending:
 `UnavailableVideoCompositor.Initialize/Composite` throw as well. `IWebcamService` has no implementation and is not
 registered.
 
-## 6. Target audio pipeline (NOT IMPLEMENTED — Phase 3)
+## 6. Audio pipeline (PARTIALLY IMPLEMENTED — Phase 3)
 
 WASAPI loopback (`AUDCLNT_STREAMFLAGS_LOOPBACK`) plus microphone, silence injection when playback is idle, and a
-48 kHz stereo mixer with soft limiter damping. Today `WasapiAudioCaptureService.StartAsync` throws
+48 kHz stereo mixer with soft limiter damping. Today `WasapiAudioCaptureService.StartAsync` no longer throws (Phase 3 partially implemented):
 `NotSupportedException`; only device enumeration works. The limiter formula referenced in the docs is validated only
 as arithmetic inside a test — no production mixer exists.
 
