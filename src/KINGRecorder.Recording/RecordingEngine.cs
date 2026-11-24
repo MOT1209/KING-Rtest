@@ -267,6 +267,7 @@ public sealed class RecordingEngine : IRecordingEngine, IAsyncDisposable
 
                 await _screenCapture.StartCaptureAsync(options, linkedCancellation.Token).ConfigureAwait(false);
                 _captureStarted = true;
+                _screenCapture.FrameArrived += OnCaptureFrameArrived;
 
                 await _audioCapture.StartAsync(
                     options.CaptureMicrophone,
@@ -276,6 +277,7 @@ public sealed class RecordingEngine : IRecordingEngine, IAsyncDisposable
                     options.SystemAudioVolume,
                     linkedCancellation.Token).ConfigureAwait(false);
                 _audioStarted = true;
+                _audioCapture.AudioDataAvailable += OnAudioDataArrived;
 
                 linkedCancellation.Token.ThrowIfCancellationRequested();
 
@@ -402,12 +404,14 @@ public sealed class RecordingEngine : IRecordingEngine, IAsyncDisposable
 
                 if (_captureStarted)
                 {
+                    _screenCapture.FrameArrived -= OnCaptureFrameArrived;
                     await _screenCapture.StopCaptureAsync(linkedCancellation.Token).ConfigureAwait(false);
                     _captureStarted = false;
                 }
 
                 if (_audioStarted)
                 {
+                    _audioCapture.AudioDataAvailable -= OnAudioDataArrived;
                     await _audioCapture.StopAsync(linkedCancellation.Token).ConfigureAwait(false);
                     _audioStarted = false;
                 }
@@ -526,10 +530,27 @@ public sealed class RecordingEngine : IRecordingEngine, IAsyncDisposable
     /// Stops whatever part of the pipeline was actually started. Never throws; failures are logged so
     /// that the original error is not masked and the engine can still return to a usable state.
     /// </summary>
+    private void OnCaptureFrameArrived(object? sender, FrameArrivedEventArgs e)
+    {
+        if (_encoderStarted)
+        {
+            _encoder.WriteVideoSample(e.SurfacePointer, e.Timestamp);
+        }
+    }
+
+    private void OnAudioDataArrived(object? sender, AudioDataEventArgs e)
+    {
+        if (_encoderStarted)
+        {
+            _encoder.WriteAudioSample(e.Buffer, e.BytesRecorded, e.Timestamp);
+        }
+    }
+
     private async Task AbortPipelineAsync()
     {
         if (_captureStarted)
         {
+            _screenCapture.FrameArrived -= OnCaptureFrameArrived;
             try
             {
                 await _screenCapture.StopCaptureAsync(CancellationToken.None).ConfigureAwait(false);
@@ -544,6 +565,7 @@ public sealed class RecordingEngine : IRecordingEngine, IAsyncDisposable
 
         if (_audioStarted)
         {
+            _audioCapture.AudioDataAvailable -= OnAudioDataArrived;
             try
             {
                 await _audioCapture.StopAsync(CancellationToken.None).ConfigureAwait(false);

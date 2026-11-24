@@ -13,6 +13,7 @@ public sealed partial class MainWindow : Window
     {
         this.InitializeComponent();
         ViewModel = viewModel;
+        this.DataContext = viewModel;
 
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);

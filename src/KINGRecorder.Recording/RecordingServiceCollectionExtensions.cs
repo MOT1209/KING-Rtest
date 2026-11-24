@@ -21,7 +21,8 @@ public static class RecordingServiceCollectionExtensions
 
         services.TryAddSingleton<IVideoCompositor, UnavailableVideoCompositor>();
         services.TryAddSingleton<IWebcamService, UnavailableWebcamService>();
-        services.TryAddSingleton<IEncoderService, UnavailableEncoderService>();
+        services.TryAddSingleton<MediaFoundationEncoderService>();
+        services.TryAddSingleton<IEncoderService>(static provider => provider.GetRequiredService<MediaFoundationEncoderService>());
         services.TryAddSingleton<RecordingEngine>();
         services.TryAddSingleton<IRecordingEngine>(static provider => provider.GetRequiredService<RecordingEngine>());
 
