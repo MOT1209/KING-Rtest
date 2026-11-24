@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using SharpDX;
 using SharpDX.Direct3D11;
+using SharpDX.Mathematics.Interop;
 using SharpDX.MediaFoundation;
 using KINGRecorder.Core.Exceptions;
 using KINGRecorder.Core.Interfaces;
@@ -47,6 +48,8 @@ public sealed class MediaFoundationEncoderService : IEncoderService, IDisposable
 
         lock (_sync)
         {
+            try
+            {
             if (_sinkWriter is not null)
             {
                 throw new InvalidOperationException("The encoder is already initialized.");
@@ -110,8 +113,7 @@ public sealed class MediaFoundationEncoderService : IEncoderService, IDisposable
             audioIn.Set(MediaTypeAttributeKeys.AudioSamplesPerSecond, 48000);
             audioIn.Set(MediaTypeAttributeKeys.AudioNumChannels, 2);
             audioIn.Set(MediaTypeAttributeKeys.AudioBitsPerSample, 16);
-            audioIn.Set(MediaTypeAttributeKeys.AudioBlockAlignment, 4);
-            audioIn.Set(MediaTypeAttributeKeys.AudioAvgBytesPerSecond, _audioBytesPerSecond);
+            // Let Media Foundation derive block alignment and avg bytes from the PCM format.
             _sinkWriter.SetInputMediaType(_audioStreamIndex, audioIn, null);
 
             _sinkWriter.BeginWriting();
@@ -124,6 +126,7 @@ public sealed class MediaFoundationEncoderService : IEncoderService, IDisposable
             _logger.LogError(ex, "Failed to initialize the Media Foundation encoder for {Path}.", outputPath);
             Cleanup();
             throw new VideoEncoderException("Media Foundation encoder initialization failed.", ex);
+        }
         }
 
         return Task.CompletedTask;
@@ -139,7 +142,7 @@ public sealed class MediaFoundationEncoderService : IEncoderService, IDisposable
         try
         {
             var texture = new Texture2D(surfacePointer);
-            var buffer = MediaFactory.CreateDXGISurfaceBuffer(typeof(Texture2D).GUID, texture, 0, new RawBool(false));
+            MediaFactory.CreateDXGISurfaceBuffer(typeof(Texture2D).GUID, texture, 0, new RawBool(false), out var buffer);
             var sample = MediaFactory.CreateSample();
             sample.AddBuffer(buffer);
             sample.SampleTime = (long)(timestamp.TotalSeconds * 10_000_000);

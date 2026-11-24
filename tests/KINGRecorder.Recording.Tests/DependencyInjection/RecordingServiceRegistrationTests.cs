@@ -30,12 +30,13 @@ public class RecordingServiceRegistrationTests
     }
 
     [Fact]
-    public void AddKingRecorderRecording_RegistersExplicitlyUnavailablePipelineServices()
+    public void AddKingRecorderRecording_RegistersPipelineServices()
     {
         using var provider = BuildProvider();
 
         Assert.IsType<UnavailableVideoCompositor>(provider.GetRequiredService<IVideoCompositor>());
-        Assert.IsType<UnavailableEncoderService>(provider.GetRequiredService<IEncoderService>());
+        Assert.IsType<UnavailableWebcamService>(provider.GetRequiredService<IWebcamService>());
+        Assert.IsType<MediaFoundationEncoderService>(provider.GetRequiredService<IEncoderService>());
     }
 
     [Fact]

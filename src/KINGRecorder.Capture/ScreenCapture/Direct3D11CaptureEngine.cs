@@ -328,7 +328,7 @@ public sealed class Direct3D11CaptureEngine : IScreenCaptureService, IAsyncDispo
 
         Interlocked.Exchange(ref _capturedFramesCount, 0);
         Interlocked.Exchange(ref _droppedFramesCount, 0);
-        _captureRegion = options.Mode == CaptureMode.CustomArea ? options.CaptureRegion : null;
+        _captureRegion = options.Mode == CaptureMode.CustomArea ? options.CustomRegion : null;
 
         // Phase 1 (task 3): build the Windows.Graphics.Capture frame pool and capture session.
         // The frame pool delivers zero-copy GPU frames through FrameArrived.

@@ -236,9 +236,6 @@ public sealed class WasapiAudioCaptureService : IAudioCaptureService
             }
         }
 
-        byte[] outputBuffer = systemBuffer;
-        int outputBytes = systemBuffer.Length;
-
         // Best-effort mix of a recently captured microphone buffer into the system buffer. Only mixes when
         // formats are compatible (same bits-per-sample and channel count); otherwise the mic buffer is dropped
         // to avoid corrupting the output. True low-latency mixing is a Phase 3 follow-up.
@@ -247,13 +244,10 @@ public sealed class WasapiAudioCaptureService : IAudioCaptureService
             && micFormat.Channels == sysFormat.Channels
             && micBytes == systemBuffer.Length)
         {
-            // Gains already applied to each buffer; sum them directly.
             MixInto(systemBuffer, micBuffer, 1.0f, sysFormat);
-            outputBuffer = systemBuffer;
-            outputBytes = systemBuffer.Length;
         }
 
-        RaiseAudioData(outputBuffer, outputBytes, _systemLoopback?.WaveFormat);
+        RaiseAudioData(systemBuffer, systemBuffer.Length, _systemLoopback?.WaveFormat);
     }
 
     private void OnMicDataAvailable(object? sender, WaveInEventArgs e)
@@ -404,27 +398,3 @@ public sealed class WasapiAudioCaptureService : IAudioCaptureService
         }
     }
 }
-```
-
-Wait, there's an issue: `WaveInEventArgs` exists in NAudio.Wave. `StoppedEventArgs` too. And `MMDevice.GetDevice` exists? NAudio's MMDeviceEnumerator has `GetDevice(string id)`. Yes.
-
-Also `_systemLoopback` disposed while event handlers detached — I detach in StopAsync. But Dispose calls StopAsync which detaches. Good. But there's a race: events could fire during dispose. Acceptable for MVP.
-
-Also note: in OnSystemDataAvailable I reference `_systemLoopback?.WaveFormat` inside the handler — fine.
-
-One concern: `ApplyGain` mutates buffer in place; then I pass systemBuffer to RaiseAudioData. Good.
-
-Another concern: when both enabled and mic buffer stashed, I mix using `micGain / sysGain` ratio? I already applied sysGain to systemBuffer and micGain to micBuffer. So mixing should just sum: systemBuffer (already sysGain) + micBuffer (already micGain). I shouldn't apply micGainRatio again. Let me fix: in OnSystemDataAvailable, when mixing, just sum micBuffer into systemBuffer with ratio 1.0 (gains already applied). Let me change MixInto call to pass 1.0f instead of micGain/sysGain.
-
-Let me adjust: `MixInto(systemBuffer, micBuffer, 1.0f, sysFormat)`.
-
-Let me also remove the pragma since AudioDataAvailable is now raised.
-
-Also need to make sure `AudioCaptureException` constructor takes (string, Exception) — yes.
-
-Now, the `StartAsync` signature in interface: `StartAsync(bool captureMic, string? micId, float micVol, bool captureSystem, float sysVol, CancellationToken ct = default)`. Matches.
-
-Let me write the file with the fix. I already wrote it above with the ratio; let me edit that part. Actually I'll rewrite the whole file with the correction.
-
-Let me just write the corrected version.<|end|><|start|><|file_sep|><|end|>assistant to=write<|channel|>analysis <|constrain|>xml<|message|><rfl:parameter name="path">
-C:\Users\aihmo\alle folder von code\opencode\KING-Rtest\src\KINGRecorder.Audio\WasapiAudioCaptureService.cs

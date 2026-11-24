@@ -26,7 +26,9 @@ public sealed class UnavailableVideoCompositor : IVideoCompositor
 
 public sealed class UnavailableWebcamService : IWebcamService
 {
+#pragma warning disable CS0067
     public event EventHandler<WebcamFrameEventArgs>? WebcamFrameArrived;
+#pragma warning restore CS0067
 
     public bool IsPreviewing => false;
 
